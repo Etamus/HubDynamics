@@ -7,6 +7,10 @@
   ],
   "routes": [
     {
+      "src": "/cache/(.*)",
+      "dest": "/cache/$1"
+    },
+    {
       "src": "/(.*)",
       "dest": "main_server.py"
     }
