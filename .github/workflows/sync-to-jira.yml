@@ -1,0 +1,25 @@
+name: Sync GitHub Issue to Jira
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  sync-to-jira:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to Jira
+        uses: atlassian/gajira-login@v3
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+
+      - name: Create Issue in Jira
+        uses: atlassian/gajira-create@v3
+        with:
+          project: 'HUBFUP' 
+          issuetype: 'Task'
+          summary: '${{ github.event.issue.title }}'
+          description: 'Issue original no GitHub: ${{ github.event.issue.html_url }}\n\n${{ github.event.issue.body }}'
+          fields: '{"duedate": "${{ github.event.issue.milestone.due_on }}"}'
