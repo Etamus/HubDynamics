@@ -19,7 +19,6 @@ jobs:
         uses: atlassian/gajira-create@v3
         with:
           project: 'HUBFUP' 
-          issuetype: 'Task'
+          issuetype: 'Tarefa'
           summary: '${{ github.event.issue.title }}'
           description: 'Issue original no GitHub: ${{ github.event.issue.html_url }}\n\n${{ github.event.issue.body }}'
-          fields: '{"duedate": "${{ github.event.issue.milestone.due_on }}"}'
