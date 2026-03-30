@@ -7,6 +7,8 @@ on:
 jobs:
   sync-to-jira:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true # Resolve o aviso do seu print
     steps:
       - name: Login to Jira
         uses: atlassian/gajira-login@v3
@@ -16,6 +18,7 @@ jobs:
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
 
       - name: Create Issue in Jira
+        id: create
         uses: atlassian/gajira-create@v3
         with:
           project: 'HUBFUP' 
