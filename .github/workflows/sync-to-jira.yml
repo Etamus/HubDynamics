@@ -2,7 +2,7 @@ name: Sync GitHub Issue to Jira
 
 on:
   issues:
-    types: [opened, edited]
+    types: [opened, edited, assigned] # Adicionado 'assigned'
   issue_comment:
     types: [created]
 
@@ -19,37 +19,36 @@ jobs:
           JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
 
-      # BUSCA: Tenta encontrar um card que já tenha o link desta Issue na descrição
+      # BUSCA: Agora ele busca pelo número da issue no título, que é mais seguro
       - name: Find Existing Issue
         id: find
         uses: atlassian/gajira-find-issue-key@v3
         with:
-          string: '${{ github.event.issue.html_url }}' # Busca pelo link único da Issue
+          string: 'GH-${{ github.event.issue.number }}' 
 
-      # CRIAÇÃO: Só roda se for uma Issue NOVA e o "find" não achou nada
+      # CRIAÇÃO: Adiciona "GH-id" no título para facilitar buscas futuras
       - name: Create Issue in Jira
         if: github.event_name == 'issues' && github.event.action == 'opened' && steps.find.outputs.issue == ''
-        id: create
         uses: atlassian/gajira-create@v3
         with:
           project: 'HUBFUP' 
           issuetype: 'Task'
-          summary: '${{ github.event.issue.title }}'
-          description: 'Issue original no GitHub: ${{ github.event.issue.html_url }}\n\n${{ github.event.issue.body }}'
+          summary: 'GH-${{ github.event.issue.number }}: ${{ github.event.issue.title }}'
+          description: 'Link: ${{ github.event.issue.html_url }}\n\n${{ github.event.issue.body }}'
 
-      # ATUALIZAÇÃO: Se a issue foi editada E o "find" achou o card, ele atualiza o título
+      # ATUALIZAÇÃO: Se encontrar o card, atualiza título e descrição
       - name: Update Jira Issue
-        if: github.event_name == 'issues' && github.event.action == 'edited' && steps.find.outputs.issue != ''
+        if: github.event_name == 'issues' && (github.event.action == 'edited' || github.event.action == 'assigned') && steps.find.outputs.issue != ''
         uses: atlassian/gajira-edit@v3
         with:
           issue: ${{ steps.find.outputs.issue }}
-          summary: '${{ github.event.issue.title }}'
-          description: 'Issue original no GitHub: ${{ github.event.issue.html_url }}\n\n${{ github.event.issue.body }}'
+          summary: 'GH-${{ github.event.issue.number }}: ${{ github.event.issue.title }}'
+          description: 'Link: ${{ github.event.issue.html_url }}\n\n${{ github.event.issue.body }}'
 
-      # COMENTÁRIO: Roda se for um comentário e o "find" achou o card
+      # COMENTÁRIO
       - name: Add Comment to Jira
         if: github.event_name == 'issue_comment' && steps.find.outputs.issue != ''
         uses: atlassian/gajira-comment@v3
         with:
           issue: ${{ steps.find.outputs.issue }}
-          comment: "${{ github.event.comment.user.login }} comentou no GitHub: \n\n ${{ github.event.comment.body }}"
+          comment: "${{ github.event.comment.user.login }} comentou: \n\n ${{ github.event.comment.body }}"
