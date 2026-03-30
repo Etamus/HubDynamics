@@ -21,7 +21,7 @@ jobs:
         uses: atlassian/gajira-create@v3
         with:
           project: 'HUBFUP' 
-          issuetype: 'Tarefa' # Se der erro de novo, tente mudar para 'Task'
+          issuetype: 'Task' # Se der erro de novo, tente mudar para 'Task'
           summary: '${{ github.event.issue.title }}'
           description: 'Issue original no GitHub: ${{ github.event.issue.html_url }}\n\n${{ github.event.issue.body }}'
           # Removi completamente a linha de "fields" para não enviar data vazia.
