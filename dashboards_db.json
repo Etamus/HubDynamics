@@ -5,6 +5,7 @@
         "items": [
           {
             "gif": "/static/gifs/sla_csi_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "sla_csi",
             "isNew": false,
             "name": "SLA Monthly CSI",
@@ -15,6 +16,7 @@
           },
           {
             "gif": "/static/gifs/projects_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "projects",
             "isNew": false,
             "name": "Projects",
@@ -30,6 +32,7 @@
         "items": [
           {
             "gif": "/static/gifs/boletim_d2c_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "boletim_d2c",
             "name": "Boletim de Faturamento (D2C)",
             "tags": "Daily,GCP,Revenue,Boletim de faturamento (D2C)",
@@ -38,6 +41,7 @@
           },
           {
             "gif": "/static/gifs/transporte_b2b_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "transporte_b2b",
             "name": "Gest\u00e3o de Transporte (B2B)",
             "tags": "Daily,GCP,Performance",
@@ -46,6 +50,7 @@
           },
           {
             "gif": "/static/gifs/new_calendar_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "new_calendar",
             "name": "New Calendar",
             "tags": "Daily,Sheets,Planning,Calend\u00e1rio expedi\u00e7\u00e3o",
@@ -53,20 +58,37 @@
             "url": "https://lookerstudio.google.com/embed/reporting/cc6a31a8-aa2a-49af-982f-7c7d170103be/page/p_az16g8cxtd"
           },
           {
+            "general": true,
             "gif": "/static/gifs/visao_gerencial_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "visao_gerencial",
+            "isNew": false,
             "name": "Vis\u00e3o Gerencial Pe\u00e7as",
             "tags": "Daily,GCP,Management,Ageing Remessa,Expans\u00e3o Malhas,Ocupa\u00e7\u00e3o da grade",
             "text": "Dashboard consolidado com os principais indicadores gerenciais da opera\u00e7\u00e3o de Spare Parts, incluindo ocupa\u00e7\u00e3o de carga na expedi\u00e7\u00e3o.",
-            "url": "https://lookerstudio.google.com/embed/reporting/4589a8ca-81a5-4233-915e-0d1c00fdda20/page/p_0zwhymauid"
+            "url": "https://lookerstudio.google.com/embed/reporting/4589a8ca-81a5-4233-915e-0d1c00fdda20/page/p_0zwhymauid",
+            "width": null
           },
           {
             "gif": "/static/gifs/monitoramento_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "farol_monitoramento",
             "name": "Farol - Monitoramento",
             "tags": "Daily,GCP,Management,Farol de monitoramento",
             "text": "Dashboard com informa\u00e7\u00f5es concentradas relacionadas as notas fiscais em aberto (pendente de entrega) e seus respectivos prazos e custos.",
             "url": "https://lookerstudio.google.com/embed/reporting/c451deb6-a994-4f67-8ca4-5ee92b4c0cb9/page/dHrbF"
+          },
+          {
+            "gif": "/static/gifs/supply_d2c_preview.gif",
+            "hub_area": "Finished Goods",
+            "id": "supply_d2c",
+            "isNew": false,
+            "name": "Supply D2C",
+            "tags": "Daily, Sheets, Performance",
+            "text": "Acompanhamento de status de notas fiscais/pedidos, avaliar a performance das transportadoras parceiras e medir a qualidade do servi\u00e7o prestado at\u00e9 o cliente final, evidenciado por m\u00e9tricas de satisfa\u00e7\u00e3o e coment\u00e1rios.",
+            "url": "https://lookerstudio.google.com/embed/reporting/75d8f84f-1322-4fe8-b5d4-c2d0cae5212d/page/p_78xyp1391d",
+            "width": null,
+            "general": false
           }
         ],
         "name": "Faturamento"
@@ -75,6 +97,7 @@
         "items": [
           {
             "gif": "/static/gifs/stock_control_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "stock_control",
             "name": "Stock Control",
             "tags": "Daily,Sheets,Accuracy,Acur\u00e1cia,Gross & NET,Pacotes movimentados",
@@ -83,6 +106,7 @@
           },
           {
             "gif": "/static/gifs/linhas_atendidas_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "linhas_nao_atendidas",
             "name": "Linhas N\u00e3o Atendidas",
             "tags": "Daily,Sheets,Accuracy,Linhas n\u00e3o atendidas",
@@ -96,11 +120,23 @@
         "items": [
           {
             "gif": "/static/gifs/daily_block_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "daily_block",
             "name": "Daily Block",
             "tags": "Daily,GCP,Revenue,Bloqueio de carteira",
             "text": "Consulte o resultado atual do impacto em bloqueio de carteira das ordens para faturamento. Ideal para acompanhamento r\u00e1pido.",
             "url": "https://lookerstudio.google.com/embed/reporting/4b061ef2-9ddf-4120-b3e1-aaa692bd10c3/page/p_lvyh6guavd"
+          },
+          {
+            "gif": "/static/gifs/acompanhamento_OIE.preview.gif",
+            "hub_area": "Finished Goods",
+            "id": "Acomp_OIE",
+            "isNew": false,
+            "name": "Acompanhamento OIE",
+            "tags": "Daily, BigQuery, Performance",
+            "text": "Atuando como um painel de controle operacional e hist\u00f3rico para monitorar a efici\u00eancia do fluxo de pedidos (fulfillment), rastreando desde o volume de vendas at\u00e9 a entrega final, visando identificar gargalos em n\u00edveis regionais, operacionais e de parceiros comerciais.",
+            "url": "https://lookerstudio.google.com/embed/reporting/69c7c82d-6cb2-453c-ad80-ac9d6043a417/page/p_g5d4apdnyd",
+            "width": null
           }
         ],
         "name": "Order"
@@ -109,6 +145,7 @@
         "items": [
           {
             "gif": "/static/gifs/analise_cdp_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "analise_cdp",
             "name": "An\u00e1lise de CDP",
             "tags": "Daily,Sheets,Efficiency,Devolu\u00e7\u00e3o log\u00edstica",
@@ -117,6 +154,7 @@
           },
           {
             "gif": "/static/gifs/sugestao_embalagem_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "sugestao_embalagem",
             "name": "Sugest\u00e3o de Embalagens CSI",
             "tags": "Daily,Gardem,Management,Ocupa\u00e7\u00e3o de embalagem",
@@ -125,6 +163,7 @@
           },
           {
             "gif": "/static/gifs/audotira_packing_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "auditoria_packing",
             "name": "Auditoria P\u00f3s Packing CSI",
             "tags": "Daily,Gardem,Management,Auditoria p\u00f3s packing",
@@ -138,6 +177,7 @@
         "items": [
           {
             "gif": "/static/gifs/receipt_management_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "receipt_management",
             "name": "Receipt Management",
             "tags": "Daily,Sheets,Efficiency,N\u00edvel de servi\u00e7o,Grade recebimento,Previs\u00e3o de volume",
@@ -151,6 +191,7 @@
         "items": [
           {
             "gif": "/static/gifs/returns_control_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "returns_control",
             "name": "Returns Control",
             "tags": "Daily,Sheets,Management,Aging de OI,Pareto de status",
@@ -164,6 +205,7 @@
         "items": [
           {
             "gif": "/static/gifs/heinrich_triangle_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "heinrich_triangle",
             "name": "Heinrich Triangle",
             "tags": "Monthly,Sheets,Safety",
@@ -183,12 +225,35 @@
         "items": [
           {
             "gif": "/static/gifs/freight_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "nave_frete",
             "isNew": false,
             "name": "Nave do Frete",
             "tags": "Daily,GCP,Costs,Acompanhamento de frete",
             "text": "An\u00e1lise detalhada dos custos e efici\u00eancia do frete em todas as localidades expedidas, permitindo a identifica\u00e7\u00e3o de oportunidades de otimiza\u00e7\u00e3o.",
-            "url": "https://public.tableau.com/views/Navedofretev1_2/Freight_Vision?:embed=y&:display_count=yes&:showVizHome=no",
+            "url": "https://us-east-1.online.tableau.com/t/lar-non-production/views/FreightControlSpareParts/Freight_Vision?%3Aembed=yes&%3AshowVizHome=no&%3Atoolbar=yes#3",
+            "width": null
+          },
+          {
+            "gif": "static/gifs/pcp_packing_preview.gif",
+            "hub_area": "Spare Parts",
+            "id": "PCP_Main",
+            "isNew": false,
+            "name": "PCP Packing",
+            "tags": "teste",
+            "text": "Teste",
+            "url": "https://us-east-1.online.tableau.com/t/lar-non-production/views/PCPembalagemv2_17676395332710/PCP_embalagem_v2?%3Aembed=yes&%3AshowVizHome=no&%3Atoolbar=yes#2",
+            "width": null
+          },
+          {
+            "gif": "",
+            "hub_area": "Spare Parts",
+            "id": "Oc_embalagem",
+            "isNew": false,
+            "name": "Ocupa\u00e7\u00e3o de Embalagem",
+            "tags": "teste",
+            "text": "Teste",
+            "url": "https://us-east-1.online.tableau.com/t/lar-non-production/views/FreightControlSpareParts/Ocupacao_real?%3Aembed=yes&%3AshowVizHome=no&%3Atoolbar=yes#1",
             "width": null
           }
         ],
@@ -198,22 +263,91 @@
         "items": [
           {
             "gif": "/static/gifs/ontime_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "on_time",
             "isNew": false,
             "name": "ON TIME",
             "tags": "Daily,GCP,Performance,On time",
             "text": "Monitoramento da performance de entregas no prazo (On Time), essencial para a satisfa\u00e7\u00e3o do cliente e efici\u00eancia log\u00edstica.",
-            "url": "https://lartableau.whirlpool.com/#/views/NFOnTime/ONTIME?:iid=1",
+            "url": "https://us-east-1.online.tableau.com/t/lar-production/views/NFOnTime/ONTIME?%3Aembed=yes&%3AshowVizHome=no&%3Atoolbar=yes#1",
             "width": null
           },
           {
-            "gif": "/static/gifs/monitoring_preview.gif",
-            "id": "ltp_monitoramento",
+            "gif": "/static/gifs/politica_estoque_preview.gif",
+            "hub_area": "Spare Parts",
+            "id": "politica_estoque",
             "isNew": false,
-            "name": "Monitoramento",
-            "tags": "Daily,GCP,Tracking,Convers\u00e3o de faturamento",
-            "text": "Monitoramento da performance de entregas.",
-            "url": "https://lartableau.whirlpool.com/#/site/BI_Core/views/DashboardLTPPeas/PainelLTP?:iid=1",
+            "name": "Politica de Estoque",
+            "tags": "teste",
+            "text": "teste",
+            "url": "https://us-east-1.online.tableau.com/t/lar-non-production/views/Polticadeestoque-Embalagem/Dashboard?%3Aembed=yes&%3AshowVizHome=no&%3Atoolbar=yes#1",
+            "width": null
+          },
+          {
+            "general": false,
+            "gif": "/static/gifs/politica_estoque_preview.gif",
+            "hub_area": "Spare Parts",
+            "id": "Grade_envio",
+            "isNew": false,
+            "name": "Grade de Envio - Embalagens",
+            "tags": "Teste",
+            "text": "Teste teste",
+            "url": "https://us-east-1.online.tableau.com/t/lar-non-production/views/Polticadeestoque-Embalagem/Envios?%3Aembed=yes&%3AshowVizHome=no&%3Atoolbar=yes#2",
+            "width": null
+          },
+          {
+            "gif": "",
+            "hub_area": "Spare Parts",
+            "id": "Pedidos_embalagem",
+            "isNew": false,
+            "name": "Pedidos - Embalagem",
+            "tags": "teste",
+            "text": "Teste",
+            "url": "https://us-east-1.online.tableau.com/t/lar-non-production/views/Polticadeestoque-Embalagem/Pedidos?%3Aembed=yes&%3AshowVizHome=no&%3Atoolbar=yes#1",
+            "width": null
+          },
+          {
+            "gif": "/static/gifs/boletim_fat_preview.gif",
+            "hub_area": "Finished Goods",
+            "id": "Boletim_Fat",
+            "isNew": false,
+            "name": "Boletim de Faturamento",
+            "tags": "Daily, BigQuery, Performance",
+            "text": "O objetivo principal deste painel \u00e9 fornecer uma vis\u00e3o financeira e quantitativa do desempenho de vendas da empresa, com foco no Faturamento Di\u00e1rio  de produtos acabados. Ele funciona como um instrumento de controle gerencial di\u00e1rio para monitorar a receita gerada, comparar o desempenho real contra metas (or\u00e7amento) ou per\u00edodos anteriores, e identificar rapidamente quais frentes de neg\u00f3cio est\u00e3o impulsionando ou prejudicando o faturamento.",
+            "url": "https://us-east-1.online.tableau.com/t/lar-production/views/BoletimFaturamento/Dashboard-Boletim?%3Aembed=yes&%3AshowVizHome=no&%3Atoolbar=yes#2",
+            "width": null
+          },
+          {
+            "gif": "/static/gifs/painel_gd_preview.gif",
+            "hub_area": "Finished Goods",
+            "id": "Gestao_Distribuicao",
+            "isNew": false,
+            "name": "Painel GD",
+            "tags": "Daily, BigQuery, Performance",
+            "text": "Atua como uma ferramenta anal\u00edtica para monitorar a sa\u00fade financeira das sa\u00eddas e entregas de produtos, contrapondo o volume faturado com o volume de devolu\u00e7\u00f5es (retornos). Isso permite que a gest\u00e3o identifique gargalos de qualidade, inefici\u00eancias log\u00edsticas ou problemas comerciais em canais e categorias de produtos espec\u00edficos.",
+            "url": "https://us-east-1.online.tableau.com/t/lar-production/views/GD-Gerencial/PainelGD?%3Aembed=yes&%3AshowVizHome=no&%3Atoolbar=yes#2",
+            "width": null
+          },
+          {
+            "gif": "/static/gifs/painel_oie_ltp_ns_preview.gif",
+            "hub_area": "Spare Parts",
+            "id": "Paineis_pecas",
+            "isNew": false,
+            "name": "Painel OIE / LTP/ NS",
+            "tags": "TESTE",
+            "text": "TESTE",
+            "url": "https://us-east-1.online.tableau.com/t/lar-production/views/DashboardLTPPeas/PainelOIE?%3Aembed=yes&%3AshowVizHome=no&%3Atoolbar=yes#3",
+            "width": null
+          },
+          {
+            "gif": "/static/gifs/otif_preview.gif",
+            "hub_area": "Finished Goods",
+            "id": "OTIF",
+            "isNew": false,
+            "name": "OTIF - On Time In Full",
+            "tags": "Daily, BigQuery, Performance",
+            "text": "Atuando como uma ferramenta de controle de n\u00edvel de servi\u00e7o log\u00edstico, avaliando a efici\u00eancia da cadeia de suprimentos ao medir se os pedidos foram entregues no prazo acordado e em sua totalidade (\"In Full\"). O painel permite identificar gargalos na entrega e atuar proativamente para melhorar a satisfa\u00e7\u00e3o do cliente.",
+            "url": "https://us-east-1.online.tableau.com/t/lar-production/views/OTIF_17606216498120/PainelOTIF?%3Aembed=yes&%3AshowVizHome=no&%3Atoolbar=yes#1",
             "width": null
           }
         ],
@@ -229,6 +363,7 @@
         "items": [
           {
             "gif": "/static/gifs/caminhos_bq_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "caminhos_bq",
             "name": "Caminhos - Bigquery",
             "tags": "Consultation,Sheets,Data,Database",
@@ -237,6 +372,7 @@
           },
           {
             "gif": "/static/gifs/sgi_spareparts_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "sgi_spareparts",
             "name": "SGI - SpareParts",
             "tags": "Consultation,Sheets,Management",
@@ -246,6 +382,7 @@
           },
           {
             "gif": "/static/gifs/manual_devolucao_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "folheto_devolucao",
             "name": "Folheto de Devolu\u00e7\u00e3o",
             "tags": "Consultation,Presentation,Data",
@@ -255,6 +392,7 @@
           },
           {
             "gif": "/static/gifs/processo_solicitacao_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "processo_devolucao",
             "name": "Processo de Devolu\u00e7\u00e3o",
             "tags": "Consultation,Presentation,Data",
@@ -263,6 +401,7 @@
           },
           {
             "gif": "/static/gifs/glossario_logistica_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "glossario_logistica",
             "name": "Gloss\u00e1rio Log\u00edstica",
             "tags": "Consultation,Presentation,Data",
@@ -276,6 +415,7 @@
         "items": [
           {
             "gif": "/static/gifs/sheets_tree_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "sheets_tree",
             "name": "Sheets Tree",
             "tags": "Database,Sheets,Data",
@@ -290,6 +430,7 @@
         "items": [
           {
             "gif": "/static/gifs/jira_ongoing_preview.gif",
+            "hub_area": "Spare Parts",
             "id": "jira_ongoing",
             "name": "Jira - Ongoing projects",
             "tags": "Dashboard,Sheets,Tracking",

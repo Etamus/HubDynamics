@@ -1,6 +1,7 @@
 import subprocess
 import os
 import sys
+import concurrent.futures  # timeout na inferência LLM
 # NOVAS IMPORTAÇÕES
 import json
 import string
@@ -14,13 +15,68 @@ import secrets  # <-- ADICIONE
 import datetime # <-- ADICIONE
 from datetime import timezone, timedelta # <-- ADICIONE timezone, timedelta
 
-import google.generativeai as genai
-try:
-    genai.configure(api_key="") 
-    gemini_model = genai.GenerativeModel('gemini-2.5-flash')
-except Exception as e:
-    print(f"ERRO: Falha ao configurar a API do Gemini. Verifique sua chave. {e}")
-    gemini_model = None
+import google.generativeai as genai  # mantido para compatibilidade de import mas não usado
+from llama_cpp import Llama
+import glob
+
+# --- INICIALIZAÇÃO DO MODELO LLAMA (llama.cpp) ---
+MODELOS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'modelos')
+os.makedirs(MODELOS_DIR, exist_ok=True)
+
+def _load_llama_model():
+    gguf_files = glob.glob(os.path.join(MODELOS_DIR, '*.gguf'))
+    if not gguf_files:
+        print('AVISO: Nenhum modelo .gguf encontrado em /modelos. O assistente estará indisponível.')
+        return None
+    model_path = gguf_files[0]
+    n_cpu = os.cpu_count() or 4
+    # Reserva 1 core para o SO/Flask não congelar durante a inferência
+    n_threads = max(1, n_cpu - 1)
+    print(f'Carregando modelo: {os.path.basename(model_path)} | CPUs: {n_cpu} | threads: {n_threads}')
+    try:
+        llm = Llama(
+            model_path=model_path,
+            n_ctx=4096,
+            n_threads=n_threads,
+            n_threads_batch=n_threads,
+            n_batch=512,
+            n_ubatch=512,
+            # flash_attn=False (padrão) — no CPU causa travamentos; é feature de GPU
+            # use_mlock=False (padrão) — mlock no Windows pode falhar silenciosamente
+            verbose=True  # Mantenha True para diagnóstico; oculta detalhes mas mostra erros críticos
+        )
+        print('Modelo carregado com sucesso. Executando warm-up...')
+        try:
+            llm.create_chat_completion(
+                messages=[{"role": "user", "content": "oi"}],
+                max_tokens=1,
+            )
+            print('Warm-up concluído. Assistente pronto.')
+        except Exception as e:
+            print(f'AVISO: warm-up falhou ({e}), prosseguindo mesmo assim.')
+        return llm
+    except Exception as e:
+        print(f'ERRO ao carregar modelo llama: {e}')
+        return None
+
+llama_model = _load_llama_model()
+
+# Cache do prompt.json em memória — recarrega automaticamente se o arquivo mudar
+_prompt_cache: dict = {}
+_prompt_cache_mtime: float = 0.0
+
+def _get_context_data() -> dict:
+    """Retorna o conteúdo do prompt.json usando cache em memória."""
+    global _prompt_cache, _prompt_cache_mtime
+    try:
+        mtime = os.path.getmtime(LLAMA_CONTEXT_FILE)
+        if mtime != _prompt_cache_mtime:
+            with open(LLAMA_CONTEXT_FILE, 'r', encoding='utf-8') as f:
+                _prompt_cache = json.load(f)
+            _prompt_cache_mtime = mtime
+    except Exception as e:
+        print(f'AVISO: não recarregou prompt.json: {e}')
+    return _prompt_cache
 
 app = Flask(__name__)
 # NOVO: Chave secreta para gerenciar sessões de usuário do Hub
@@ -32,7 +88,9 @@ LOCKOUT_DURATION = 300  # (5 segundos = 300) <-- ADICIONE
 # --- Variáveis de Estado Globais ---
 is_sap_logged_in = False
 is_bw_hana_logged_in = False
+is_salesforce_logged_in = False
 last_bw_creds = {}
+last_salesforce_creds = {}
 
 # --- Caminhos e Configurações ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -40,7 +98,7 @@ DRIVE_ROOT = os.path.join(BASE_DIR, "drive")
 USUARIOS_DB = os.path.join(BASE_DIR, "users.json")
 SCHEDULER_DB = os.path.join(BASE_DIR, "scheduler_db.json") # <-- ADICIONE ESTA LINHA
 REQUESTS_DB = os.path.join(BASE_DIR, "requests_db.json") # <-- ADICIONE ESTA LINHA
-GEMINI_CONTEXT_FILE = os.path.join(BASE_DIR, "prompt.json") # <-- ALTERADO
+LLAMA_CONTEXT_FILE = os.path.join(BASE_DIR, "prompt.json")
 
 # NOVO: Diretório para cache de imagens
 CACHE_DIR = os.path.join(BASE_DIR, "cache")
@@ -147,7 +205,60 @@ def load_automations():
         with open(AUTOMATIONS_DB, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception:
-        return {}                
+        return {}
+
+
+# --- NOVA FUNÇÃO: Áreas de hub disponíveis ---
+HUB_AREAS = ['Spare Parts', 'Finished Goods']
+
+
+def filter_automations_by_area(automations, user_area):
+    """Filtra automações pelo hub_area do usuário. Spare Parts vê tudo suas, Finished Goods vê as suas."""
+    return {k: v for k, v in automations.items()
+            if v.get('hub_area', 'Spare Parts') == user_area}
+
+
+def filter_dashboards_by_area(dashboards_data, user_area):
+    """Retorna uma cópia dos dashboards com apenas os itens do hub_area do usuário.
+    Remove áreas vazias após a filtragem e também plataformas que ficam sem nenhuma área."""
+    import copy
+    filtered = copy.deepcopy(dashboards_data)
+    for system_key in list(filtered.keys()):
+        system_data = filtered[system_key]
+        areas = system_data.get('areas', {})
+        for area_key in list(areas.keys()):
+            area_data = areas[area_key]
+            if isinstance(area_data, dict) and 'items' in area_data:
+                area_data['items'] = [
+                    item for item in area_data['items']
+                    if item.get('hub_area', 'Spare Parts') == user_area
+                ]
+                if not area_data['items']:
+                    del areas[area_key]
+        # Remove a plataforma inteira se não sobrou nenhuma área com conteúdo
+        if not areas and 'areas' in system_data:
+            del filtered[system_key]
+    return filtered
+
+def filter_dashboards_general_only(dashboards_data):
+    """Retorna apenas itens marcados como general=True (para usuários não logados)."""
+    import copy
+    filtered = copy.deepcopy(dashboards_data)
+    for system_key in list(filtered.keys()):
+        system_data = filtered[system_key]
+        areas = system_data.get('areas', {})
+        for area_key in list(areas.keys()):
+            area_data = areas[area_key]
+            if isinstance(area_data, dict) and 'items' in area_data:
+                area_data['items'] = [
+                    item for item in area_data['items']
+                    if item.get('general', False)
+                ]
+                if not area_data['items']:
+                    del areas[area_key]
+        if not areas and 'areas' in system_data:
+            del filtered[system_key]
+    return filtered
 
 def get_user_profile_data():
     """Retorna dados de perfil necessários para renderização do Hub."""
@@ -201,40 +312,94 @@ def hub():
 
 @app.route('/automacao')
 def automacao():
-    global is_sap_logged_in, is_bw_hana_logged_in, last_bw_creds
+    global is_sap_logged_in, is_bw_hana_logged_in, is_salesforce_logged_in, last_bw_creds, last_salesforce_creds
     is_sap_logged_in = False
     is_bw_hana_logged_in = False
+    is_salesforce_logged_in = False
     last_bw_creds = {}
+    last_salesforce_creds = {}
     
     initial_zv62n_file = find_file_by_prefix(DOWNLOAD_DIR, "ZV62N")
     automations = load_automations()
     
-    # --- INÍCIO DA MODIFICAÇÃO ---
+    # --- FILTRAGEM POR ÁREA DE HUB ---
     profile_data = get_user_profile_data()
-    # --- FIM DA MODIFICAÇÃO ---
-    
+    username = session.get('username')
+    users = load_users()
+    user_area = session.get('active_area') or (users.get(username, {}).get('area', 'Spare Parts') if username else 'Spare Parts')
+    if username and username.lower() == 'admin' and not session.get('active_area'):
+        user_area = 'Spare Parts'
+    automations = filter_automations_by_area(automations, user_area)
+    # --- FIM DA FILTRAGEM ---
+
+    # Detecta quais plataformas têm automações para a área atual
+    has_sap         = any(v.get('type', '').lower() == 'sap'         for v in automations.values())
+    has_bw          = any(v.get('type', '').lower() == 'bw'          for v in automations.values())
+    has_salesforce  = any(v.get('type', '').lower() == 'salesforce'  for v in automations.values())
+
     return render_template(
-        'automacao.html', 
+        'automacao.html',
         macros=automations,
         initial_zv62n_file=initial_zv62n_file,
         is_hub_logged_in=session.get('username'),
-        role=profile_data['role'], # <-- ADICIONADO
+        active_area=user_area,
+        role=profile_data['role'],
         profile_image=profile_data['profile_image'],
-        profile_username=profile_data['username']
+        profile_username=profile_data['username'],
+        has_sap=has_sap,
+        has_bw=has_bw,
+        has_salesforce=has_salesforce,
     )
 
 @app.route('/dashboards')
 def dashboards():
-    dashboards_data = load_dashboards()
+    all_dashboards_data = load_dashboards()
     
-    # --- INÍCIO DA MODIFICAÇÃO ---
+    # --- FILTRAGEM POR ÁREA DE HUB ---
     profile_data = get_user_profile_data()
-    # --- FIM DA MODIFICAÇÃO ---
-    
+    username = session.get('username')
+    users = load_users()
+    user_area = session.get('active_area') or (users.get(username, {}).get('area', 'Spare Parts') if username else 'Spare Parts')
+    if username and username.lower() == 'admin' and not session.get('active_area'):
+        user_area = 'Spare Parts'
+
+    # Detecção automática de área: se ?open=ID foi passado, usa a área do item
+    open_id = request.args.get('open')
+    if open_id and username:
+        found_area = None
+        search_done = False
+        for system_data in all_dashboards_data.values():
+            if search_done:
+                break
+            if isinstance(system_data, dict):
+                for area_data in system_data.get('areas', {}).values():
+                    for item in area_data.get('items', []):
+                        if item.get('id') == open_id:
+                            found_area = item.get('hub_area', 'Spare Parts')
+                            search_done = True
+                            break
+                    if search_done:
+                        break
+        if found_area:
+            u = users.get(username, {})
+            allowed = u.get('allowed_areas', [u.get('area', 'Spare Parts')])
+            if username.lower() == 'admin':
+                allowed = list(HUB_AREAS)
+            if found_area in allowed:
+                user_area = found_area
+                session['active_area'] = found_area
+
+    if username:
+        dashboards_data = filter_dashboards_by_area(all_dashboards_data, user_area)
+    else:
+        dashboards_data = filter_dashboards_general_only(all_dashboards_data)
+    # --- FIM DA FILTRAGEM ---
+
     return render_template(
-        'dashboards.html', 
+        'dashboards.html',
         is_hub_logged_in=session.get('username'),
         dashboards_data=dashboards_data,
+        active_area=user_area,
         role=profile_data['role'], # <-- ADICIONADO
         profile_image=profile_data['profile_image'],
         profile_username=profile_data['username']
@@ -244,11 +409,15 @@ def dashboards():
 def drive():
     # --- INÍCIO DA MODIFICAÇÃO ---
     profile_data = get_user_profile_data()
+    username = session.get('username')
+    users = load_users()
+    user_area = session.get('active_area') or (users.get(username, {}).get('area', 'Spare Parts') if username else 'Spare Parts')
     # --- FIM DA MODIFICAÇÃO ---
     
     return render_template(
         'drive.html', 
-        is_hub_logged_in=session.get('username'), 
+        is_hub_logged_in=session.get('username'),
+        active_area=user_area,
         role=profile_data['role'],
         profile_image=profile_data['profile_image'],
         profile_username=profile_data['username']
@@ -536,9 +705,13 @@ def hub_login():
     role = user_data.get('role', 'Analista')
     if username.lower() == 'admin':
         role = 'Executor'
+    
+    allowed_areas = user_data.get('allowed_areas', [area])
+    if username.lower() == 'admin':
+        allowed_areas = HUB_AREAS
         
     display_name = user_data.get('display_name', None) 
-    return jsonify({"status": "sucesso", "username": username, "display_name": display_name, "profile_image": image_url, "area": area, "role": role})
+    return jsonify({"status": "sucesso", "username": username, "display_name": display_name, "profile_image": image_url, "area": area, "allowed_areas": allowed_areas, "role": role})
 
 @app.route('/api/hub/logout', methods=['POST'])
 def hub_logout():
@@ -562,13 +735,36 @@ def check_session():
         # --- ADICIONADO: Enviar a Área do usuário ---
         area = user_data.get('area', 'N/A') # 'N/A' como fallback
 
-        role = user_data.get('role', 'Analista') # De 'Visualizador' para 'Analista'
+        role = user_data.get('role', 'Analista')
+        
+        allowed_areas = user_data.get('allowed_areas', [area])
+        if username.lower() == 'admin':
+            allowed_areas = HUB_AREAS
         
         display_name = user_data.get('display_name', None) # <-- ADICIONE ESTA LINHA
-        return jsonify({"status": "logado", "username": username, "display_name": display_name, "profile_image": image_url, "area": area, "role": role})
+        return jsonify({"status": "logado", "username": username, "display_name": display_name, "profile_image": image_url, "area": area, "allowed_areas": allowed_areas, "role": role})
     
     # --- CORREÇÃO APLICADA AQUI ---
     return jsonify({"status": "deslogado", "profile_image": "/static/icones/default_profile.png"})
+
+@app.route('/api/hub/set-active-area', methods=['POST'])
+def set_active_area():
+    """Define a área ativa da sessão do usuário."""
+    username = session.get('username')
+    if not username:
+        return jsonify({"status": "erro", "mensagem": "Não logado."}), 401
+    new_area = request.json.get('area')
+    if new_area not in HUB_AREAS:
+        return jsonify({"status": "erro", "mensagem": "Área inválida."}), 400
+    users = load_users()
+    user_data = users.get(username, {})
+    allowed = user_data.get('allowed_areas', [user_data.get('area', 'Spare Parts')])
+    if username.lower() == 'admin':
+        allowed = HUB_AREAS
+    if new_area not in allowed:
+        return jsonify({"status": "erro", "mensagem": "Acesso negado a esta área."}), 403
+    session['active_area'] = new_area
+    return jsonify({"status": "sucesso", "area": new_area})
 
 @app.route('/api/scheduler/load')
 def scheduler_load():
@@ -865,14 +1061,12 @@ def admin_get_users():
             
         user_list.append({
             "username": username,
-            "display_name": data.get('display_name', None), # <-- ADICIONE ESTA LINHA
+            "display_name": data.get('display_name', None),
             "area": data.get('area', 'N/A'),
-            "role": data.get('role', 'Analista'), # Padrão para Analista se não definido
+            "allowed_areas": data.get('allowed_areas', [data.get('area', 'N/A')]),
+            "role": data.get('role', 'Analista'),
             "password": data.get('password', ''),
-            
-            # --- INÍCIO DA MODIFICAÇÃO (Req 1) ---
-            "lockout_until": data.get('lockout_until', None) # Adiciona este campo
-            # --- FIM DA MODIFICAÇÃO ---
+            "lockout_until": data.get('lockout_until', None)
         })
         
     return jsonify({"status": "sucesso", "users": user_list})
@@ -888,7 +1082,8 @@ def admin_update_user():
     new_password = data.get('password') # Pode ser vazio
     new_area = data.get('area')
     new_role = data.get('role')
-    new_display_name = data.get('display_name', None) # <-- ADICIONE ESTA LINHA
+    new_display_name = data.get('display_name', None)
+    new_allowed_areas = data.get('allowed_areas', None)
 
     if not username or not new_area or not new_role:
         return jsonify({"status": "erro", "mensagem": "Campos obrigatórios (usuário, área, função) ausentes."}), 400
@@ -903,7 +1098,11 @@ def admin_update_user():
     # Atualiza os dados
     users[username]['area'] = new_area
     users[username]['role'] = new_role
-    users[username]['display_name'] = new_display_name # <-- ADICIONE ESTA LINHA
+    users[username]['display_name'] = new_display_name
+    if new_allowed_areas is not None:
+        users[username]['allowed_areas'] = [a for a in new_allowed_areas if a in HUB_AREAS]
+    else:
+        users[username]['allowed_areas'] = [new_area]
     if new_password: # Só atualiza a senha se uma nova foi enviada
         users[username]['password'] = new_password
     
@@ -1030,7 +1229,7 @@ def save_connection_if_requested(system, user, password):
 
 @app.route('/login-sap', methods=['POST'])
 def login_sap():
-    global is_sap_logged_in, is_bw_hana_logged_in, last_bw_creds
+    global is_sap_logged_in, is_bw_hana_logged_in, is_salesforce_logged_in, last_bw_creds, last_salesforce_creds
     usuario = request.form['usuario']
     senha = request.form['senha']
     
@@ -1047,7 +1246,9 @@ def login_sap():
     if resultado['status'] == 'sucesso':
         is_sap_logged_in = True
         is_bw_hana_logged_in = False
+        is_salesforce_logged_in = False
         last_bw_creds = {}
+        last_salesforce_creds = {}
         resultado['mensagem'] = "Login realizado com sucesso."
         
         save_connection_if_requested('sap', usuario, senha)
@@ -1060,7 +1261,7 @@ def login_sap():
 # (Req 1) NOVO: Rota para salvar a conexão do Tableau
 @app.route('/api/tableau/login', methods=['POST'])
 def login_tableau():
-    global is_sap_logged_in, is_bw_hana_logged_in, last_bw_creds
+    global is_sap_logged_in, is_bw_hana_logged_in, is_salesforce_logged_in, last_bw_creds, last_salesforce_creds
     
     usuario = request.form['usuario']
     senha = request.form['senha']
@@ -1072,7 +1273,9 @@ def login_tableau():
     # Reinicia os outros estados de login para evitar conflito
     is_sap_logged_in = False
     is_bw_hana_logged_in = False
+    is_salesforce_logged_in = False
     last_bw_creds = {}
+    last_salesforce_creds = {}
     
     return jsonify({"status": "sucesso", "mensagem": "Credenciais salvas. Abrindo dashboard."})
 
@@ -1088,7 +1291,7 @@ def logout_sap():
 
 @app.route('/login-bw-hana', methods=['POST'])
 def login_bw_hana():
-    global is_sap_logged_in, is_bw_hana_logged_in, last_bw_creds
+    global is_sap_logged_in, is_bw_hana_logged_in, is_salesforce_logged_in, last_bw_creds, last_salesforce_creds
     
     executar_comando_externo([ "powershell.exe", "-ExecutionPolicy", "Bypass", "-File", SCRIPT_CLEANUP ], "Limpeza pré-login")
     
@@ -1101,6 +1304,8 @@ def login_bw_hana():
     }
     is_bw_hana_logged_in = True
     is_sap_logged_in = False
+    is_salesforce_logged_in = False
+    last_salesforce_creds = {}
     
     save_connection_if_requested('bw', usuario, senha)
     
@@ -1116,6 +1321,63 @@ def logout_bw_hana():
     executar_comando_externo([ "powershell.exe", "-ExecutionPolicy", "Bypass", "-File", SCRIPT_CLEANUP ], "Cleanup Pós-BW")
 
     return jsonify({"status": "sucesso", "mensagem": "Estado de login BW HANA reiniciado."})
+
+@app.route('/login-salesforce', methods=['POST'])
+def login_salesforce():
+    global is_sap_logged_in, is_bw_hana_logged_in, is_salesforce_logged_in, last_bw_creds, last_salesforce_creds
+    
+    executar_comando_externo([ "powershell.exe", "-ExecutionPolicy", "Bypass", "-File", SCRIPT_CLEANUP ], "Limpeza pré-login")
+    
+    usuario = request.form['usuario']
+    senha = request.form['senha']
+    
+    last_salesforce_creds = {
+        'user': usuario,
+        'pass': senha
+    }
+    is_salesforce_logged_in = True
+    is_sap_logged_in = False
+    is_bw_hana_logged_in = False
+    last_bw_creds = {}
+    
+    save_connection_if_requested('salesforce', usuario, senha)
+    
+    return jsonify({"status": "sucesso", "mensagem": "Login realizado com sucesso."})
+
+@app.route('/executar-salesforce', methods=['POST'])
+def executar_salesforce():
+    if not is_salesforce_logged_in:
+        return jsonify({"status": "erro", "mensagem": "Acesso negado. Por favor, faça o login no Salesforce primeiro."}), 403
+    
+    if not last_salesforce_creds:
+        return jsonify({"status": "erro", "mensagem": "Credenciais do Salesforce não encontradas no servidor. Faça o login novamente."}), 400
+
+    automations = load_automations()
+    nome_macro_selecionada = request.form['macro']
+    config = automations.get(nome_macro_selecionada)
+    
+    if not config or config.get("type") != "salesforce":
+        return jsonify({"status": "erro", "mensagem": "Automação Salesforce não encontrada ou inválida!"}), 400
+
+    usuario = last_salesforce_creds.get('user')
+    senha = last_salesforce_creds.get('pass')
+    
+    comando = [ "powershell.exe", "-ExecutionPolicy", "Bypass", "-File", SCRIPT_RUNNER_SIMPLES, "-CaminhoArquivo", config['arquivo'], "-NomeMacro", config['macro'] ]
+    contexto = f"tarefa Salesforce '{nome_macro_selecionada}'"
+    resultado = executar_comando_externo(comando, contexto_tarefa=contexto)
+    
+    return jsonify(resultado)
+
+@app.route('/logout-salesforce', methods=['POST'])
+def logout_salesforce():
+    global is_salesforce_logged_in, last_salesforce_creds
+    
+    is_salesforce_logged_in = False
+    last_salesforce_creds = {}
+    
+    executar_comando_externo([ "powershell.exe", "-ExecutionPolicy", "Bypass", "-File", SCRIPT_CLEANUP ], "Cleanup Pós-Salesforce")
+
+    return jsonify({"status": "sucesso", "mensagem": "Estado de login Salesforce reiniciado."})
 
 # --- Função de Execução de Comando ---
 def executar_comando_externo(comando, contexto_tarefa="Tarefa genérica", timeout_seconds=600): # 10 min de timeout padrão
@@ -1138,96 +1400,354 @@ def executar_comando_externo(comando, contexto_tarefa="Tarefa genérica", timeou
     except Exception as e:
         return {"status": "erro", "mensagem": f"Erro inesperado no Python: {str(e)}"}
 
-# --- NOVA ROTA DE API: CHATBOT GEMINI ---
+# ---------------------------------------------------------------------------
+# Helpers para injeção dinâmica de contexto do chatbot
+# ---------------------------------------------------------------------------
+
+def _build_automation_index():
+    """Retorna lista de strings com nome, tipo e caminho explícito de cada automação."""
+    try:
+        with open(AUTOMATIONS_DB, 'r', encoding='utf-8') as fa:
+            data = json.load(fa)
+        lines = []
+        for name, info in data.items():
+            text = (info.get('text') or '').strip()
+            tipo = (info.get('type') or '').upper()
+            area = info.get('hub_area', '')
+            # Monta caminho de navegação explícito
+            if tipo == 'SAP':
+                path = f"Automações > SAP > {name}"
+            elif tipo == 'BW':
+                path = f"Automações > BW > {name}"
+            elif tipo == 'SALESFORCE':
+                path = f"Automações > Salesforce > {name}"
+            else:
+                path = f"Automações > {name}"
+            entry = f"- **{name}**"
+            if area:
+                entry += f" ({area})"
+            if text:
+                entry += f": {text}"
+            entry += f" | Caminho: {path}"
+            lines.append(entry)
+        return lines
+    except Exception as e:
+        print(f"AVISO automations_db: {e}")
+        return []
+
+def _build_dashboard_index():
+    """Retorna lista com nome, descrição e caminho explícito de cada dashboard."""
+    try:
+        with open(DASHBOARDS_DB, 'r', encoding='utf-8') as fd:
+            data = json.load(fd)
+        lines = []
+        for platform, pdata in data.items():
+            # Usa system_name se disponível (ex: 'Looker Studio', 'Tableau', 'Biblioteca')
+            plabel = pdata.get('system_name', platform.capitalize())
+            if 'areas' in pdata:
+                for area_obj in pdata['areas'].values():
+                    alabel = area_obj.get('name', '')
+                    for item in area_obj.get('items', []):
+                        iname = item.get('name', '')
+                        itext = (item.get('text') or '').strip()
+                        if not iname:
+                            continue
+                        path = f"Dashboards > {plabel} > {alabel} > {iname}"
+                        entry = f"- **{iname}** [{plabel} / {alabel}]"
+                        if itext:
+                            entry += f": {itext}"
+                        entry += f" | Caminho: {path}"
+                        lines.append(entry)
+            elif 'items' in pdata:
+                for item in pdata['items']:
+                    iname = item.get('name', '')
+                    itext = (item.get('text') or '').strip()
+                    if not iname:
+                        continue
+                    path = f"Dashboards > {plabel} > {iname}"
+                    entry = f"- **{iname}** [{plabel}]"
+                    if itext:
+                        entry += f": {itext}"
+                    entry += f" | Caminho: {path}"
+                    lines.append(entry)
+        return lines
+    except Exception as e:
+        print(f"AVISO dashboards_db: {e}")
+        return []
+
+# Pré-carrega índices na inicialização para não ler arquivo a cada request
+_AUTO_INDEX  = _build_automation_index()
+_DASH_INDEX  = _build_dashboard_index()
+
+# Palavras-chave para decidir qual contexto injetar
+_KW_AUTOMATION = {
+    'automação', 'automacao', 'robô', 'robo', 'macro', 'sap', 'bw', 'base mãe',
+    'base mae', 'outlook', 'aging', 'relatório peças', 'relatorio pecas',
+    'cancelamento', 'salesforce', 'monitor de pedidos', 'extração', 'extracao'
+}
+_KW_DASHBOARD = {
+    'dashboard', 'looker', 'tableau', 'biblioteca', 'library', 'daily block',
+    'receipt', 'cdp', 'embalagem', 'packing', 'stock', 'linhas', 'returns',
+    'faturamento', 'transporte', 'calendar', 'gerencial', 'farol', 'sla',
+    'projects', 'heinrich', 'nave', 'on time', 'ontime', 'sgi', 'glossário',
+    'sheets', 'jira', 'bigquery', 'supply', 'acompanhamento'
+}
+_KW_AODOCS = {
+    'processo', 'logístic', 'logistic', 'armazenagem', 'armazém', 'armazem',
+    'recebimento', 'expedição', 'expedicao', 'estoque', 'inventário', 'inventario',
+    'custo', 'ehs', 'reversa', 'devolução', 'devolucao', 'wms', 'gardem',
+    'erp', 'picking', 'packing list', 'romaneio', 'raci', 'pivo', 'usp',
+    'joinville', 'rio claro', 'nota fiscal', 'nf', 'cte', 'transportador',
+    'm&a', 'sg&a', 'acuracidade', 'saldo contábil', 'recontagem', 'inspeção',
+    'inspecao', 'sucata', 'ordem inversa', 'whirlpool', 'sap ecc'
+}
+_KW_HUB = {
+    'hub', 'ferramenta', 'acesso rápido', 'drive', 'perfil', 'login', 'senha',
+    'agendador', 'conexão', 'conexao', 'analista', 'executor', 'registrar',
+    'token', 'cargo', 'função', 'funcao', 'bug', 'erro', 'feedback', 'sugestão'
+}
+
+def _detect_topics(text: str):
+    """Retorna set de tópicos relevantes para a mensagem do usuário."""
+    low = text.lower()
+    topics = set()
+    if any(kw in low for kw in _KW_AUTOMATION):
+        topics.add('auto')
+    if any(kw in low for kw in _KW_DASHBOARD):
+        topics.add('dash')
+    if any(kw in low for kw in _KW_AODOCS):
+        topics.add('aodocs')
+    if any(kw in low for kw in _KW_HUB):
+        topics.add('hub')
+    # fallback: sem match → inclui tudo (pergunta genérica)
+    if not topics:
+        topics = {'hub', 'auto', 'dash'}
+    return topics
+
+# Palavras irrelevantes para filtragem do índice (stopwords PT-BR + EN comuns)
+_STOPWORDS = {
+    'de', 'do', 'da', 'dos', 'das', 'o', 'a', 'os', 'as', 'um', 'uma',
+    'em', 'no', 'na', 'nos', 'nas', 'por', 'para', 'com', 'e', 'ou',
+    'que', 'se', 'me', 'te', 'ele', 'ela', 'nós', 'eles', 'eu', 'tu',
+    'como', 'onde', 'qual', 'quando', 'quem', 'quais', 'esta', 'esse',
+    'isto', 'isso', 'aquele', 'aquilo', 'meu', 'fica', 'tem', 'ser',
+    'the', 'is', 'of', 'in', 'on', 'at', 'to', 'for', 'and', 'or',
+    'quero', 'saber', 'preciso', 'pode', 'favor', 'obrigado', 'ajuda',
+    'quer', 'dizer', 'faz', 'vai', 'vou', 'nao', 'sim',
+    # Termos genéricos de query que batem em tudo (não são nomes de dashboards/automações)
+    'dashboard', 'dashboards', 'automacao', 'automacao', 'automações', 'automacoes',
+    'ferramenta', 'ferramentas', 'acesso', 'encontrar', 'encontro', 'encontre',
+    'quer', 'temos', 'tem', 'tenho', 'achar', 'acho', 'ver',
+}
+
+def _filter_index(index: list, query: str, fallback_limit: int = 15) -> list:
+    """Filtra o índice retornando apenas entradas relevantes para a query.
+
+    Busca SOMENTE no nome+descrição (antes de '| Caminho:') para evitar
+    falsos positivos com a palavra 'Dashboards' presente em todos os caminhos.
+    Se nenhuma entrada casar, retorna até `fallback_limit` entradas.
+    """
+    if not index:
+        return []
+    low = query.lower()
+    tokens = [t.strip(string.punctuation) for t in low.split()]
+    keywords = [t for t in tokens if len(t) >= 3 and t not in _STOPWORDS]
+
+    if not keywords:
+        return index[:fallback_limit]
+
+    matched = []
+    for entry in index:
+        # Filtra apenas contra nome+descrição — ignora o campo "| Caminho: ..."
+        searchable = entry.split('| Caminho:')[0].lower()
+        if any(kw in searchable for kw in keywords):
+            matched.append(entry)
+
+    return matched if matched else index[:fallback_limit]
+
+
+# Todos os domínios conhecidos do Hub para pré-filtro de off-topic
+_ALL_HUB_KW = _KW_HUB | _KW_AUTOMATION | _KW_DASHBOARD | _KW_AODOCS
+
+def _is_offtopic(text: str, history: list) -> bool:
+    """Retorna True APENAS se a mensagem for claramente não relacionada ao Hub.
+
+    Estratégia conservadora: só rejeita se NÃO houver NENHUMA evidência de
+    contexto Hub — nem na mensagem atual, nem nas últimas trocas do histórico.
+    Nunca bloqueia perguntas curtas (possíveis follow-ups como 'onde fica?').
+    """
+    low = text.lower().strip()
+    # Pergunta curta = provavelmente follow-up de conversa em andamento
+    if len(low.split()) <= 4:
+        return False
+    # Contém keyword do Hub → relevante
+    if any(kw in low for kw in _ALL_HUB_KW):
+        return False
+    # Histórico recente tem conteúdo Hub → provavelmente follow-up
+    for msg in history[-4:]:
+        if any(kw in msg.get('text', '').lower() for kw in _ALL_HUB_KW):
+            return False
+    # Nenhuma evidência de contexto Hub → off-topic
+    return True
+
+# --- ROTA DE API: CHATBOT (llama.cpp) ---
 @app.route('/api/chatbot/query', methods=['POST'])
 def chatbot_query():
-    if not gemini_model:
-        return jsonify({"status": "erro", "text": "A API do Gemini não está configurada no servidor."}), 500
+    if not llama_model:
+        return jsonify({"status": "erro", "text": "Nenhum modelo .gguf encontrado na pasta /modelos. Adicione um modelo e reinicie o servidor."}), 500
 
-    # --- INÍCIO DA MODIFICAÇÃO (Req 1) ---
-    # Pega o histórico enviado pelo frontend
     history = request.json.get('history', [])
     if not history:
         return jsonify({"status": "erro", "text": "Mensagem vazia."}), 400
-    # --- FIM DA MODIFICAÇÃO ---
 
-    # --- LÓGICA DE MONTAGEM DE PROMPT ---
+    # Limita o histórico — menos tokens = prefill mais rápido
+    MAX_HISTORY_MESSAGES = 4  # 2 trocas (user + assistant)
+    if len(history) > MAX_HISTORY_MESSAGES:
+        history = history[-MAX_HISTORY_MESSAGES:]
+
+    # Detecta tópico pela última mensagem do usuário
+    last_user_text = ""
+    for msg in reversed(history):
+        if msg.get("role") == "user":
+            last_user_text = msg.get("text", "")
+            break
+
+    # Pré-filtro: rejeita off-topic sem chamar o modelo (resposta instantânea)
+    if _is_offtopic(last_user_text, history):
+        return jsonify({
+            "status": "sucesso",
+            "text": "Só posso ajudar com dúvidas relacionadas ao **Hub Spare Parts**.",
+            "form_trigger": None
+        })
+
+    topics = _detect_topics(last_user_text)
+
+    # Monta o system prompt — COMPACTO para manter prefill < 400 tokens no CPU
     try:
-        with open(GEMINI_CONTEXT_FILE, 'r', encoding='utf-8') as f:
-            context_data = json.load(f)
-        
-        # Monta o prompt do sistema a partir do JSON (exatamente como antes)
-        system_prompt = context_data.get("system_prompt_introduction", "") + "\n\n"
-        system_prompt += "## FERRAMENTAS DO HUB:\n" + "\n".join(context_data.get("tools", [])) + "\n\n"
-        system_prompt += "## AUTOMAÇÕES DISPONÍVEIS (RPA):\n" + "\n".join(context_data.get("automations", [])) + "\n\n"
-        system_prompt += "## DASHBOARDS DISPONÍVEIS (BI):\n" + "\n".join(context_data.get("dashboards", [])) + "\n\n"
-        system_prompt += "## REGRAS DE RESPOSTA:\n" + "\n".join(context_data.get("response_rules", []))
-    
-    except Exception as e:
-        print(f"ERRO: Falha ao ler ou montar o gemini_context.json: {e}")
-        return jsonify({"status": "erro", "text": "Desculpe, estou com problemas para acessar meu contexto interno."}), 500
-    # --- FIM DA LÓGICA DO PROMPT ---
+        context_data = _get_context_data()
+        if not context_data:
+            raise ValueError('prompt.json vazio ou não carregado')
 
-    try:
-        # --- INÍCIO DA MODIFICAÇÃO (Req 1: Construir Contexto) ---
-        
-        # Converte o histórico do JS para o formato do Gemini
-        gemini_history = []
-        for msg in history:
-            role = msg.get("role", "user") # 'user' ou 'model'
-            # Remove o HTML (negrito) que o frontend pode ter enviado
-            text = msg.get("text", "").replace("<strong>", "").replace("</strong>", "")
-            
-            gemini_history.append({
-                "role": role,
-                "parts": [text]
-            })
-
-        # Pega a última mensagem (o prompt atual do usuário)
-        last_user_message = gemini_history.pop()
-        
-        # Constrói o histórico como string (para manter seu método original)
-        history_string = ""
-        for msg in gemini_history:
-            if msg["role"] == "user":
-                history_string += "Usuário: " + msg["parts"][0] + "\n"
-            else:
-                history_string += "Assistente: " + msg["parts"][0] + "\n"
-
-        # Monta o prompt final (Sistema + Histórico + Pergunta Atual)
-        full_prompt = (
-            system_prompt + "\n\n" + 
-            history_string + 
-            "Usuário: " + last_user_message["parts"][0] + 
-            "\nAssistente: "
+        # Cabeçalho fixo e curto
+        system_prompt = (
+            "Você é o Hub Assistant do Hub Spare Parts (Whirlpool). "
+            "Responda SOMENTE sobre o Hub. Seja breve e direto. "
+            "Use **negrito** para nomes. Não invente informações. "
+            "Se perguntarem nova automação/bug: termine com [FORM:DEMANDA]. "
+            "Se pedirem feedback/sugestão: termine com [FORM:SUGESTAO].\n"
         )
-        
-        response = gemini_model.generate_content(full_prompt)
-        # --- FIM DA MODIFICAÇÃO ---
 
-        bot_response_text = response.text
-        
+        # Ferramentas gerais — apenas se pergunta sobre Hub/ferramentas/login
+        if 'hub' in topics:
+            tools = context_data.get("tools", [])
+            if tools:
+                # Trunca cada item para economizar tokens: máx 120 chars por item
+                short_tools = [t[:120] for t in tools]
+                system_prompt += "\nFerramentas: " + " | ".join(short_tools) + "\n"
+
+        # Automações — apenas se tópico específico detectado (NÃO no fallback genérico)
+        if 'auto' in topics and topics != {'hub', 'auto', 'dash'}:
+            filtered_auto = _filter_index(_AUTO_INDEX, last_user_text, fallback_limit=5)
+            if filtered_auto:
+                system_prompt += "\nAutomações:\n" + "\n".join(filtered_auto[:5]) + "\n"
+
+        # Dashboards — apenas se tópico específico detectado
+        if 'dash' in topics and topics != {'hub', 'auto', 'dash'}:
+            filtered_dash = _filter_index(_DASH_INDEX, last_user_text, fallback_limit=5)
+            if filtered_dash:
+                system_prompt += "\nDashboards:\n" + "\n".join(filtered_dash[:5]) + "\n"
+
+        # AODOCS — apenas se detectado explicitamente
+        if 'aodocs' in topics:
+            aodocs = context_data.get("aodocs_knowledge", "").strip()
+            if aodocs:
+                system_prompt += "\nProcessos: " + aodocs[:500] + "\n"
+
+        # Login/registro — regra curta embutida (não mais do prompt.json longo)
+        system_prompt += (
+            "\nLogin: clique no ícone de perfil > Logar. "
+            "Sem acesso: Solicitar Acesso > preencher dados > guardar token. "
+            "Dashboard bloqueado: solicitar ao gestor da área. "
+            "Criadores: Mateus Lopes (github.com/Etamus) e Jonathan Paixão.\n"
+        )
+
+        tok_est = len(system_prompt) // 4
+        print(f"[LLM] system_prompt: {len(system_prompt)} chars / ~{tok_est} tokens | tópicos: {topics}")
+
+    except Exception as e:
+        print(f"ERRO ao ler prompt.json: {e}")
+        return jsonify({"status": "erro", "text": "Desculpe, estou com problemas para acessar meu contexto interno."}), 500
+
+    try:
+        # Constrói prompt no formato ChatML (compatível com a maioria dos modelos GGUF)
+        messages = [{"role": "system", "content": system_prompt}]
+        for msg in history:
+            role = msg.get("role", "user")
+            text = msg.get("text", "").replace("<strong>", "").replace("</strong>", "")
+            # Gemini usava 'model', llama.cpp usa 'assistant'
+            if role == "model":
+                role = "assistant"
+            messages.append({"role": role, "content": text})
+
+        # Executa inferência com timeout de 180s para evitar hang infinito no Flask
+        _INFERENCE_TIMEOUT = 180
+        _inference_kwargs = dict(
+            messages=messages,
+            max_tokens=200,      # respostas curtas = mais rápido na CPU
+            temperature=0.25,    # baixo = determinístico/factual (ideal para FAQ)
+            top_k=40,
+            top_p=0.90,
+            repeat_penalty=1.15,
+            stop=["\nUsuário:", "\nUser:", "\nAssistant:", "<|im_end|>"]
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _pool:
+            _future = _pool.submit(llama_model.create_chat_completion, **_inference_kwargs)
+            try:
+                response = _future.result(timeout=_INFERENCE_TIMEOUT)
+            except concurrent.futures.TimeoutError:
+                print(f'ERRO: inferência excedeu {_INFERENCE_TIMEOUT}s. Possível travamento.')
+                return jsonify({"status": "erro", "text": "A resposta demorou muito. Tente uma pergunta mais curta."}), 504
+
+        bot_response_text = response["choices"][0]["message"]["content"].strip()
+
         form_trigger = None
-        
-        # Verifica se a IA acionou um formulário
         if "[FORM:DEMANDA]" in bot_response_text:
             bot_response_text = bot_response_text.replace("[FORM:DEMANDA]", "").strip()
             form_trigger = "demanda"
         elif "[FORM:SUGESTAO]" in bot_response_text:
             bot_response_text = bot_response_text.replace("[FORM:SUGESTAO]", "").strip()
             form_trigger = "sugestao"
-            
-        return jsonify({
-            "status": "sucesso", 
-            "text": bot_response_text,
-            "form_trigger": form_trigger
-        })
+
+        return jsonify({"status": "sucesso", "text": bot_response_text, "form_trigger": form_trigger})
 
     except Exception as e:
-        print(f"Erro na API do Gemini: {e}")
+        print(f"Erro no llama.cpp: {e}")
         return jsonify({"status": "erro", "text": "Desculpe, não consegui processar sua solicitação no momento."}), 500
     
  # --- NOVAS ROTAS DE API (CMS ADMIN) ---
+
+@app.route('/api/hub/get-cms-data')
+def hub_get_cms_data():
+    """Retorna dados de CMS filtrados pela área do usuário logado (para a busca)."""
+    automations = load_automations()
+    dashboards_data = load_dashboards()
+
+    username = session.get('username')
+    users = load_users()
+    user_area = session.get('active_area') or (users.get(username, {}).get('area', 'Spare Parts') if username else 'Spare Parts')
+    if username and username.lower() == 'admin' and not session.get('active_area'):
+        user_area = 'Spare Parts'
+    automations = filter_automations_by_area(automations, user_area)
+    if username:
+        dashboards_data = filter_dashboards_by_area(dashboards_data, user_area)
+    else:
+        dashboards_data = filter_dashboards_general_only(dashboards_data)
+
+    return jsonify({
+        "status": "sucesso",
+        "automations": automations,
+        "dashboards": dashboards_data
+    })
 
 @app.route('/api/admin/get-cms-data')
 def admin_get_cms_data():
@@ -1285,6 +1805,7 @@ def admin_add_user():
     password = data.get('password')
     area = data.get('area')
     role = data.get('role')
+    allowed_areas = data.get('allowed_areas', [area])
 
     if not username or not password or not area or not role:
         return jsonify({"status": "erro", "mensagem": "Todos os campos são obrigatórios (usuário, senha, área, função)."}), 400
@@ -1298,7 +1819,8 @@ def admin_add_user():
         "password": password,
         "role": role,
         "area": area,
-        "display_name": None, # <-- ADICIONE ESTA LINHA
+        "allowed_areas": [a for a in allowed_areas if a in HUB_AREAS] or [area],
+        "display_name": None,
         "profile_image": None,
         "connections": {
             "sap": None,
@@ -1315,6 +1837,11 @@ def admin_add_user():
 # --- Início do Servidor ---
 
 if __name__ == '__main__':
+    # Fix: Windows error 6 — click/colorama falha ao escrever o banner do Flask
+    # quando o handle de console Win32 é inválido (alguns terminais do VS Code / PowerShell).
+    # Solução: substituir show_server_banner por no-op para evitar o click.echo problemático.
+    import flask.cli as _flask_cli
+    _flask_cli.show_server_banner = lambda *a, **kw: None
     print("Servidor Iniciado...")
-    print(f"Acesse o Hub em http://[SEU_IP]:5000") 
-    app.run(host='0.0.0.0', port=5000)
+    print("Acesse o Hub em http://[SEU_IP]:5000")
+    app.run(host='0.0.0.0', port=5000, use_reloader=False, debug=False, threaded=True)
