@@ -6,6 +6,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const radios = document.querySelectorAll('input[name="dashboard_system"]');
     const backButton = document.getElementById('back-btn');
     let isViewingDashboard = false;
+    let isSplitMode = false;
+    let isSplitView = false;
+    let splitFirstUrl = null;
+    let splitFirstMaxWidth = null;
+    const splitBtn = document.getElementById('split-btn');
     const allViewButtons = document.querySelectorAll('.view-button');
     const lookerOptions = document.getElementById('looker-options');
     const tableauOptions = document.getElementById('tableau-options');
@@ -31,20 +36,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const lookerAreaButtons = document.querySelectorAll('#looker-area-selection .area-button');
 
     // --- (Req 1) INÍCIO: Seletores e Variáveis do Modal de Login ---
-    let isTableauLoggedIn = false;
-    let currentTaskInfo = null; // (Armazena o botão clicado)
-    let savedConnections = {}; // (Armazena as conexões do Hub)
-
-    const modalOverlay = document.getElementById('login-modal-overlay');
-    const modalUser = document.getElementById('modal-user');
-    const modalPass = document.getElementById('modal-pass');
-    const modalExecuteBtn = document.getElementById('modal-execute-btn');
-    const modalLoginCloseBtn = document.getElementById('login-modal-close-btn');
-    const modalSaveConnBtn = document.getElementById('modal-save-conn-btn'); 
-    const modalLogoTableauLight = document.getElementById('modal-logo-tableau-light');
-    const modalLogoTableauDark = document.getElementById('modal-logo-tableau-dark');
-    
-    // --- FIM: Seletores do Modal ---
     
     const LOOKER_PAGE_SIZE = 4;
     let lookerCurrentPage = 1;
@@ -59,7 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
      * Atualiza o localStorage com o item recém-clicado.
      * Mantém apenas os 4 itens mais recentes.
      */
-    function updateLocalStorage(id, name, icon) {
+    function updateLocalStorage(id, name, icon, hubArea) {
         if (!id || !name || !icon) return;
 
         // --- LÓGICA DE USUÁRIO (Req 1) ---
@@ -70,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let recents = JSON.parse(localStorage.getItem(storageKey)) || [];
         
-        const newItem = { id, name, icon };
+        const newItem = { id, name, icon, hub_area: hubArea || 'Spare Parts' };
 
         // Remove o item se ele já existir...
         recents = recents.filter(item => item.id !== id);
@@ -119,7 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // (1) Lógica de Recência (para Acesso Rápido)
-            updateLocalStorage(id, name, icon);
+            updateLocalStorage(id, name, icon, button.dataset.hubArea);
 
             // --- INÍCIO DA MODIFICAÇÃO (Req 1: Frequência) ---
             // (2) Lógica de Frequência (para "Mais Acessados")
@@ -176,100 +167,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // (Helper) Abre o modal de login
-    function openLoginModal(button) {
-        currentTaskInfo = button; // Salva o botão que o usuário quer abrir
-        
-        // --- INÍCIO DA MODIFICAÇÃO ---
-        // Mostra ambos os logos (o CSS cuida de qual exibir)
-        if (modalLogoTableauLight) modalLogoTableauLight.classList.remove('hidden');
-        if (modalLogoTableauDark) modalLogoTableauDark.classList.remove('hidden');
-        // --- FIM DA MODIFICAÇÃO ---
-
-        // Se tivermos uma conexão salva, pré-preenche
-        if (savedConnections.tableau) {
-            modalUser.value = savedConnections.tableau.user || '';
-            modalPass.value = savedConnections.tableau.pass || '';
-        } else {
-            modalUser.value = '';
-            modalPass.value = '';
-        }
-        
-        modalOverlay.classList.add('visible');
-        modalUser.focus();
-    }
-
-    // (Helper) Fecha o modal
-    function closeLoginModal() {
-        modalOverlay.classList.remove('visible');
-    }
-
-    // (Helper) Ação principal de login (chama a API)
-    function handleTableauLogin(saveConnection = false) {
-        const user = modalUser.value;
-        const pass = modalPass.value;
-
-        if (!user || !pass) {
-            alert('Por favor, preencha o usuário e a senha.');
-            return;
-        }
-
-        modalExecuteBtn.disabled = true;
-        if (modalSaveConnBtn) modalSaveConnBtn.disabled = true;
-
-        const formData = new URLSearchParams();
-        formData.append('usuario', user);
-        formData.append('senha', pass);
-        if (saveConnection) {
-            formData.append('save_connection', 'true');
-        }
-
-        // Chama a nova API do backend
-        fetch('/api/tableau/login', { method: 'POST', body: formData })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'sucesso') {
-                    isTableauLoggedIn = true; // Define o estado de login
-                    closeLoginModal();
-                    
-                    if (saveConnection) {
-                         // Atualiza o estado local das conexões
-                         if (!savedConnections.tableau) savedConnections.tableau = {};
-                         savedConnections.tableau.user = user;
-                         savedConnections.tableau.pass = pass;
-                    }
-
-                    // (CRÍTICO) Abre o dashboard que o usuário clicou
-                    showDashboard(currentTaskInfo); 
-                } else {
-                    alert('ERRO: ' + data.mensagem);
-                }
-            })
-            .catch(err => {
-                alert('Erro de comunicação com o servidor.');
-            })
-            .finally(() => {
-                modalExecuteBtn.disabled = false;
-                if (modalSaveConnBtn) modalSaveConnBtn.disabled = false;
-            });
-    }
-
-    // (Helper) Adiciona os listeners aos botões do modal
-    function initializeLoginModalListeners() {
-        if (!modalOverlay) return; // Sai se o modal não foi carregado
-
-        modalExecuteBtn.addEventListener('click', () => handleTableauLogin(false));
-        if (modalSaveConnBtn) {
-            modalSaveConnBtn.addEventListener('click', () => handleTableauLogin(true));
-        }
-        modalLoginCloseBtn.addEventListener('click', closeLoginModal);
-        modalOverlay.addEventListener('mousedown', (e) => {
-            if (e.target === modalOverlay) closeLoginModal();
-        });
-        modalPass.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') handleTableauLogin(false);
-        });
-    }
     
     // (Helper) Refatoração da lógica que cria o Iframe
     function showDashboard(button) {
@@ -306,30 +203,56 @@ document.addEventListener('DOMContentLoaded', () => {
         const dashboardUrl = button.getAttribute('data-url');
         const customMaxWidth = button.dataset.width;
 
-        dashboardView.innerHTML = '';
-        const iframe = document.createElement('iframe');
-        iframe.src = dashboardUrl;
-        iframe.className = 'dashboard-iframe';
-        iframe.setAttribute('allowfullscreen', '');
-
-        if (customMaxWidth) {
-            iframe.style.maxWidth = customMaxWidth;
-        }
-
         const fab = document.getElementById('feedback-fab');
-        if (fab) {
-            fab.classList.add('hidden');
+        if (fab) fab.classList.add('hidden');
+
+        if (isSplitMode) {
+            // --- Entra no modo split view: mostra dois iframes lado a lado ---
+            isSplitMode = false;
+            isSplitView = true;
+            selectionScreen.classList.remove('split-picking');
+            const splitBanner = document.getElementById('split-pick-banner');
+            if (splitBanner) splitBanner.remove();
+
+            dashboardView.innerHTML = '';
+            dashboardView.classList.add('split-view');
+
+            const iframe1 = document.createElement('iframe');
+            iframe1.src = splitFirstUrl;
+            iframe1.className = 'dashboard-iframe';
+            iframe1.setAttribute('allowfullscreen', '');
+            if (splitFirstMaxWidth) iframe1.style.maxWidth = splitFirstMaxWidth;
+
+            const iframe2 = document.createElement('iframe');
+            iframe2.src = dashboardUrl;
+            iframe2.className = 'dashboard-iframe';
+            iframe2.setAttribute('allowfullscreen', '');
+            if (customMaxWidth) iframe2.style.maxWidth = customMaxWidth;
+
+            dashboardView.appendChild(iframe1);
+            dashboardView.appendChild(iframe2);
+            dashboardView.style.display = 'flex';
+            selectionScreen.style.display = 'none';
+        } else {
+            // --- Modo normal: um único iframe ---
+            isSplitView = false;
+            dashboardView.classList.remove('split-view');
+            dashboardView.innerHTML = '';
+            const iframe = document.createElement('iframe');
+            iframe.src = dashboardUrl;
+            iframe.className = 'dashboard-iframe';
+            iframe.setAttribute('allowfullscreen', '');
+            if (customMaxWidth) iframe.style.maxWidth = customMaxWidth;
+            dashboardView.appendChild(iframe);
+            selectionScreen.style.display = 'none';
+            dashboardView.style.display = 'flex';
         }
 
-        dashboardView.appendChild(iframe);
-        selectionScreen.style.display = 'none';
-        dashboardView.style.display = 'flex';
         isViewingDashboard = true;
         document.body.classList.add('dashboard-view-active');
-        if (pageSearchContainer) {
-            pageSearchContainer.classList.add('hidden');
-        }
+        if (pageSearchContainer) pageSearchContainer.classList.add('hidden');
         updateBackButton();
+        updateSplitBtn();
     }
     // --- FIM: Funções de Login ---
 
@@ -449,15 +372,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const selectedSystem = document.querySelector('input[name="dashboard_system"]:checked').value;
         
         // Esconde tudo
-        lookerOptions.classList.add('hidden');
-        tableauOptions.classList.add('hidden');
+        if (lookerOptions) { lookerOptions.classList.add('hidden'); }
+        if (tableauOptions) { tableauOptions.classList.add('hidden'); }
         if (libraryOptions) { libraryOptions.classList.add('hidden'); }
-        if (lookerPaginationControls) { lookerPaginationControls.classList.add('hidden'); } // ADICIONADO
+        if (lookerPaginationControls) { lookerPaginationControls.classList.add('hidden'); }
 
         // Mostra o selecionado
         if (selectedSystem === 'looker') {
             lookerOptions.classList.remove('hidden');
-            if (lookerPaginationControls) { lookerPaginationControls.classList.remove('hidden'); } // ADICIONADO
+            if (lookerPaginationControls) { lookerPaginationControls.classList.remove('hidden'); }
         } else if (selectedSystem === 'tableau') {
             tableauOptions.classList.remove('hidden');
         } else if (selectedSystem === 'library') {
@@ -470,32 +393,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Lógica do clique (para abrir o dashboard)
         button.addEventListener('click', () => {
-            
-            // Verifica se é um dashboard do Tableau
-            const isTableau = button.closest('#tableau-options');
-            
-            if (isTableau) {
-                // Se for Tableau, verifica o login
-                
-                // 1. Verifica conexão salva (auto-login)
-                if (savedConnections.tableau && !isTableauLoggedIn) {
-                    // Tenta logar automaticamente com a conexão salva
-                    openLoginModal(button); // Pré-preenche
-                    handleTableauLogin(false); // Tenta logar
-                
-                // 2. Se já estiver logado (sessão)
-                } else if (isTableauLoggedIn) {
-                    showDashboard(button);
-                
-                // 3. Se não tiver conexão salva E não estiver logado
-                } else {
-                    openLoginModal(button); // Pede login manual
-                }
-
-            } else {
-                // Se for Looker ou Library, abre direto
-                showDashboard(button);
-            }
+            showDashboard(button);
         }); 
 
         // Lógica do mouseover (para mostrar o preview com etiquetas)
@@ -577,9 +475,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 backButton.title = 'Voltar ao Hub';
                 document.body.classList.remove('dashboard-view-active');
                 
-                isTableauLoggedIn = false;
-                currentTaskInfo = null;
-
                 // (Lógica para sair da tela cheia/paisagem permanece a mesma)
                 if (document.fullscreenElement && document.exitFullscreen) {
                     document.exitFullscreen().catch(err => {
@@ -596,9 +491,89 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+    function updateSplitBtn() {
+        if (!splitBtn) return;
+        // Esconde em: tela de seleção, modo split view ativo
+        if (!isViewingDashboard || isSplitView) {
+            splitBtn.classList.add('hidden');
+            splitBtn.querySelector('i').className = 'fas fa-table-columns';
+            splitBtn.classList.remove('split-btn-active');
+            return;
+        }
+        splitBtn.classList.remove('hidden');
+        if (isSplitMode) {
+            splitBtn.querySelector('i').className = 'fas fa-xmark';
+            splitBtn.title = 'Cancelar Split';
+            splitBtn.classList.add('split-btn-active');
+        } else {
+            splitBtn.querySelector('i').className = 'fas fa-table-columns';
+            splitBtn.title = 'Split Screen';
+            splitBtn.classList.remove('split-btn-active');
+        }
+    }
+
+    function restoreSingleIframe(url, maxWidth) {
+        isSplitMode = false;
+        selectionScreen.classList.remove('split-picking');
+        const splitBanner = document.getElementById('split-pick-banner');
+        if (splitBanner) splitBanner.remove();
+        dashboardView.classList.remove('split-view');
+        dashboardView.innerHTML = '';
+        const iframe = document.createElement('iframe');
+        iframe.src = url;
+        iframe.className = 'dashboard-iframe';
+        iframe.setAttribute('allowfullscreen', '');
+        if (maxWidth) iframe.style.maxWidth = maxWidth;
+        dashboardView.appendChild(iframe);
+        dashboardView.style.display = 'flex';
+        selectionScreen.style.display = 'none';
+        isViewingDashboard = true;
+        updateBackButton();
+        updateSplitBtn();
+    }
+
+    if (splitBtn) {
+        splitBtn.addEventListener('click', () => {
+            if (isSplitMode) {
+                // Cancela: restaura o iframe original
+                restoreSingleIframe(splitFirstUrl, splitFirstMaxWidth);
+                return;
+            }
+            // Inicia split pick: salva iframe atual e mostra seleção como overlay
+            const currentIframe = dashboardView.querySelector('.dashboard-iframe:first-child');
+            if (!currentIframe) return;
+            splitFirstUrl = currentIframe.src;
+            splitFirstMaxWidth = currentIframe.style.maxWidth || null;
+            isSplitMode = true;
+
+            // Banner informativo no topo da tela de seleção
+            if (!document.getElementById('split-pick-banner')) {
+                const banner = document.createElement('div');
+                banner.id = 'split-pick-banner';
+                banner.innerHTML = '<i class="fas fa-table-columns"></i> Escolha o segundo dashboard';
+                selectionScreen.insertAdjacentElement('afterbegin', banner);
+            }
+
+            dashboardView.style.display = 'none';
+            selectionScreen.classList.add('split-picking');
+            selectionScreen.style.display = 'flex';
+            isViewingDashboard = true;
+            updateBackButton();
+            updateSplitBtn();
+        });
+    }
+
     backButton.addEventListener('click', (event) => {
+        if (isSplitMode) {
+            // Volta ao dashboard único sem entrar na tela de seleção
+            event.preventDefault();
+            restoreSingleIframe(splitFirstUrl, splitFirstMaxWidth);
+            return;
+        }
         if (isViewingDashboard) {
             event.preventDefault();
+            isSplitView = false;
+            dashboardView.classList.remove('split-view');
             dashboardView.innerHTML = '';
             dashboardView.style.display = 'none';
             selectionScreen.style.display = 'flex';
@@ -608,8 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 pageSearchContainer.classList.remove('hidden');
             }
             updateBackButton();
-            // Tenta encontrar o 'feedback-fab' e removê-lo.
-            // Adicionado try-catch para não quebrar se o 'shared.js' ainda não carregou o fab
+            updateSplitBtn();
             try { 
                 document.getElementById('feedback-fab').classList.remove('hidden');
             } catch (e) {
@@ -650,14 +624,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const mainContainer = button.closest('#looker-options, #tableau-options, #library-options');
             parentDashboardGroup.classList.add('hidden');
 
-            // --- ADICIONAR ESTAS 2 LINHAS ---
             if (mainContainer && mainContainer.id === 'looker-options') {
                 lookerPaginationControls.classList.remove('hidden');
             }
-            // --- FIM DA ADIÇÃO ---
-            
+
             if (mainContainer) {
-                mainContainer.querySelector('.area-selection-container').classList.remove('hidden');
+                const areaContainer = mainContainer.querySelector('.area-selection-container');
+                if (areaContainer) areaContainer.classList.remove('hidden');
             }
         });
     });
@@ -670,18 +643,6 @@ document.addEventListener('DOMContentLoaded', () => {
     checkForAutoOpen();  // Verifica se veio do Hub com um link
     updateLookerPagination(); // --- ADICIONAR ESTA LINHA ---
 
-    // --- INÍCIO DA MODIFICAÇÃO (Mova o código para aqui) ---
-    // Busca as conexões salvas do Hub
-    fetch('/api/hub/get-connections')
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'sucesso') {
-                savedConnections = data.connections || {};
-            }
-        });
-        
-    // Adiciona os listeners ao modal de login
-    initializeLoginModalListeners();
     // --- FIM DA MODIFICAÇÃO ---
 
 }); // <-- Este é o fim do DOMContentLoaded

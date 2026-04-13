@@ -2,11 +2,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Variáveis de Estado ---
     let isSapLoggedIn = false;
     let isBwLoggedIn = false;
+    let isSalesforceLoggedIn = false;
     let currentTaskInfo = null;
     let statusTimeout;
     let currentHubUser = null; // <-- ADICIONE ESTA LINHA
     
-    let savedConnections = {}; // Será preenchido com { sap: {...}, bw: {...} }
+    let savedConnections = {}; // Será preenchido com { sap: {...}, bw: {...}, salesforce: {...} }
 
     // --- Variáveis do Agendador ---
     let jobQueue = []; 
@@ -23,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const systemRadios = document.querySelectorAll('input[name="login_system"]');
     const sapTasksSection = document.getElementById('sap-tasks-section');
     const bwTasksSection = document.getElementById('bw-tasks-section');
+    const salesforceTasksSection = document.getElementById('salesforce-tasks-section');
     const allTaskButtons = document.querySelectorAll('.task-button');
     const logoutBtn = document.getElementById('logout-btn');
 
@@ -35,6 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalSaveConnBtn = document.getElementById('modal-save-conn-btn'); 
     const modalLogoSap = document.getElementById('modal-logo-sap');
     const modalLogoBw = document.getElementById('modal-logo-bw');
+    const modalLogoSalesforce = document.getElementById('modal-logo-salesforce');
 
     // --- Seletores do Modal de Confirmação ---
     const confirmModalOverlay = document.getElementById('confirm-modal-overlay');
@@ -303,19 +306,19 @@ document.addEventListener('DOMContentLoaded', () => {
     function openLoginModal(taskInfo) {
         currentTaskInfo = taskInfo; 
         
+        // Esconde todos os logos primeiro
+        document.getElementById('modal-logo-sap-light').classList.add('hidden');
+        document.getElementById('modal-logo-sap-dark').classList.add('hidden');
+        modalLogoBw.classList.add('hidden');
+        modalLogoSalesforce.classList.add('hidden');
+
         if (taskInfo.type === 'sap') {
-            // --- INÍCIO DA MODIFICAÇÃO (Req 2) ---
             document.getElementById('modal-logo-sap-light').classList.remove('hidden');
             document.getElementById('modal-logo-sap-dark').classList.remove('hidden');
-            // --- FIM DA MODIFICAÇÃO ---
-            modalLogoBw.classList.add('hidden');
-
         } else if (taskInfo.type === 'bw') {
-            // --- INÍCIO DA MODIFICAÇÃO (Req 2) ---
-            document.getElementById('modal-logo-sap-light').classList.add('hidden');
-            document.getElementById('modal-logo-sap-dark').classList.add('hidden');
-            // --- FIM DA MODIFICAÇÃO ---
             modalLogoBw.classList.remove('hidden');
+        } else if (taskInfo.type === 'salesforce') {
+            modalLogoSalesforce.classList.remove('hidden');
         }
         
         modalUser.value = '';
@@ -353,6 +356,9 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (systemType === 'bw') {
             endpoint = '/login-bw-hana';
             setProcessing("Realizando login no BW HANA...");
+        } else if (systemType === 'salesforce') {
+            endpoint = '/login-salesforce';
+            setProcessing("Realizando login no Salesforce...");
         }
 
         fetch(endpoint, { method: 'POST', body: formData })
@@ -366,9 +372,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (systemType === 'sap') {
                         isSapLoggedIn = true;
                         isBwLoggedIn = false;
-                    } else {
+                        isSalesforceLoggedIn = false;
+                    } else if (systemType === 'bw') {
                         isSapLoggedIn = false;
                         isBwLoggedIn = true;
+                        isSalesforceLoggedIn = false;
+                    } else if (systemType === 'salesforce') {
+                        isSapLoggedIn = false;
+                        isBwLoggedIn = false;
+                        isSalesforceLoggedIn = true;
                     }
                     
                     currentHubUser = localStorage.getItem('hubUsername') || null;
@@ -441,12 +453,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 .then(response => response.json())
                 .then(data => handleTaskResult(data, isSchedulerJob))
                 .catch(error => handleFetchError(error, isSchedulerJob));
+
+        } else if (taskInfo.type === 'salesforce') {
+            setProcessing(`Executando '${taskInfo.name}'...`, isSchedulerJob);
+            const sfFormData = new URLSearchParams();
+            sfFormData.append('macro', taskInfo.name);
+            fetch('/executar-salesforce', { method: 'POST', body: sfFormData })
+                .then(response => response.json())
+                .then(data => handleTaskResult(data, isSchedulerJob))
+                .catch(error => handleFetchError(error, isSchedulerJob));
         }
     }
     
     function autoLoginAndExecute(taskInfo, credentials, isSchedulerJob = false) {
         const systemType = taskInfo.type;
-        const endpoint = (systemType === 'sap') ? '/login-sap' : '/login-bw-hana';
+        let endpoint;
+        if (systemType === 'sap') endpoint = '/login-sap';
+        else if (systemType === 'bw') endpoint = '/login-bw-hana';
+        else if (systemType === 'salesforce') endpoint = '/login-salesforce';
         
         setProcessing(`Autenticando com conexão salva ${systemType.toUpperCase()}...`, isSchedulerJob);
 
@@ -461,9 +485,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (systemType === 'sap') {
                     isSapLoggedIn = true;
                     isBwLoggedIn = false;
-                } else {
+                    isSalesforceLoggedIn = false;
+                } else if (systemType === 'bw') {
                     isBwLoggedIn = true;
                     isSapLoggedIn = false;
+                    isSalesforceLoggedIn = false;
+                } else if (systemType === 'salesforce') {
+                    isSalesforceLoggedIn = true;
+                    isSapLoggedIn = false;
+                    isBwLoggedIn = false;
                 }
                 
                 if (!isSchedulerJob) {
@@ -508,9 +538,13 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (isBwLoggedIn) {
             endpoint = '/logout-bw-hana';
             setProcessing("Realizando logout do BW...");
+        } else if (isSalesforceLoggedIn) {
+            endpoint = '/logout-salesforce';
+            setProcessing("Realizando logout do Salesforce...");
         } else {
             isSapLoggedIn = false;
             isBwLoggedIn = false;
+            isSalesforceLoggedIn = false;
             updateUiState();
             return;
         }
@@ -528,6 +562,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .finally(() => {
                 isSapLoggedIn = false;
                 isBwLoggedIn = false;
+                isSalesforceLoggedIn = false;
                 updateUiState();
             });
     }
@@ -540,6 +575,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         else if (isBwLoggedIn && !savedConnections.bw) {
             showLogout = true;
+        }
+        else if (isSalesforceLoggedIn && !savedConnections.salesforce) {
+            showLogout = true;
         } 
 
         if (showLogout) {
@@ -549,18 +587,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         if (isSapLoggedIn) {
-            document.querySelector('input[name="login_system"][value="sap"]').checked = true;
+            const r = document.querySelector('input[name="login_system"][value="sap"]');
+            if (r) r.checked = true;
         } else if (isBwLoggedIn) {
-            document.querySelector('input[name="login_system"][value="bw"]').checked = true;
+            const r = document.querySelector('input[name="login_system"][value="bw"]');
+            if (r) r.checked = true;
+        } else if (isSalesforceLoggedIn) {
+            const r = document.querySelector('input[name="login_system"][value="salesforce"]');
+            if (r) r.checked = true;
         }
         
-        const selectedSystem = document.querySelector('input[name="login_system"]:checked').value;
+        const selectedSystem = document.querySelector('input[name="login_system"]:checked')?.value;
+        sapTasksSection?.classList.add('hidden');
+        bwTasksSection?.classList.add('hidden');
+        salesforceTasksSection?.classList.add('hidden');
         if (selectedSystem === 'sap') {
-            sapTasksSection.classList.remove('hidden');
-            bwTasksSection.classList.add('hidden');
-        } else {
-            sapTasksSection.classList.add('hidden');
-            bwTasksSection.classList.remove('hidden');
+            sapTasksSection?.classList.remove('hidden');
+        } else if (selectedSystem === 'bw') {
+            bwTasksSection?.classList.remove('hidden');
+        } else if (selectedSystem === 'salesforce') {
+            salesforceTasksSection?.classList.remove('hidden');
         }
     }
 
@@ -569,21 +615,28 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const selectedSystem = document.querySelector('input[name="login_system"]:checked').value;
+        const selectedSystem = document.querySelector('input[name="login_system"]:checked')?.value;
+        if (!selectedSystem) return;
 
         const showCorrectTasks = () => {
+            sapTasksSection?.classList.add('hidden');
+            bwTasksSection?.classList.add('hidden');
+            salesforceTasksSection?.classList.add('hidden');
             if (selectedSystem === 'sap') {
-                sapTasksSection.classList.remove('hidden');
-                bwTasksSection.classList.add('hidden');
-            } else {
-                sapTasksSection.classList.add('hidden');
-                bwTasksSection.classList.remove('hidden');
+                sapTasksSection?.classList.remove('hidden');
+            } else if (selectedSystem === 'bw') {
+                bwTasksSection?.classList.remove('hidden');
+            } else if (selectedSystem === 'salesforce') {
+                salesforceTasksSection?.classList.remove('hidden');
             }
         };
 
-        const needsLogout = (selectedSystem === 'sap' && isBwLoggedIn) || (selectedSystem === 'bw' && isSapLoggedIn);
+        const needsLogout = 
+            (selectedSystem === 'sap' && (isBwLoggedIn || isSalesforceLoggedIn)) || 
+            (selectedSystem === 'bw' && (isSapLoggedIn || isSalesforceLoggedIn)) ||
+            (selectedSystem === 'salesforce' && (isSapLoggedIn || isBwLoggedIn));
         
-        const hasAnySavedConnection = savedConnections.sap || savedConnections.bw;
+        const hasAnySavedConnection = savedConnections.sap || savedConnections.bw || savedConnections.salesforce;
 
         if (needsLogout) {
             if (hasAnySavedConnection) {
@@ -594,7 +647,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         handleLogout();
                     },
                     () => {
-                        const loggedInSystem = isSapLoggedIn ? 'sap' : 'bw';
+                        const loggedInSystem = isSapLoggedIn ? 'sap' : (isBwLoggedIn ? 'bw' : 'salesforce');
                         document.querySelector(`input[name="login_system"][value="${loggedInSystem}"]`).checked = true;
                     }
                 );
@@ -629,6 +682,15 @@ function collectAllTasks() {
     if (bwTask) {
         schedulerAllTasks.push({ name: 'Relatório Peças', type: 'bw' });
     }
+
+    // Salesforce Tasks
+    const salesforceTasks = document.querySelectorAll('#salesforce-tasks-section .task-button');
+    salesforceTasks.forEach(task => {
+        const taskName = task.dataset.taskName;
+        if (taskName) {
+            schedulerAllTasks.push({ name: taskName, type: 'salesforce' });
+        }
+    });
 
     // Opcional: Selecionar o primeiro item na inicialização se a lista não estiver vazia
     if (schedulerAllTasks.length > 0) {
@@ -1292,12 +1354,14 @@ function initialize() {
             const searchTerm = automacaoSearchInput.value.toLowerCase();
             const sapContainer = document.querySelector('#sap-tasks-section .button-container');
             const bwContainer = document.querySelector('#bw-tasks-section .button-container');
+            const salesforceContainer = document.querySelector('#salesforce-tasks-section .button-container');
 
-            // Seleciona todos os containers de botões (incluindo grupos)
-            const allTaskElements = [...sapContainer.querySelectorAll('.task-button'), 
-                                     ...bwContainer.querySelectorAll('.task-button'),
-                                     ...sapContainer.querySelectorAll('.task-button-group'),
-                                     ...bwContainer.querySelectorAll('.task-button-group')];
+            // Seleciona todos os containers de botões (incluindo grupos), ignorando os que não existem
+            const allTaskElements = [
+                ...(sapContainer ? sapContainer.querySelectorAll('.task-button, .task-button-group') : []),
+                ...(bwContainer ? bwContainer.querySelectorAll('.task-button, .task-button-group') : []),
+                ...(salesforceContainer ? salesforceContainer.querySelectorAll('.task-button, .task-button-group') : []),
+            ];
 
             allTaskElements.forEach(element => {
                 // Encontra o botão real dentro do grupo ou o próprio elemento

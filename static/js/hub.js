@@ -19,9 +19,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const accessDropdown = document.getElementById('access-dropdown');
     
     let currentHubUser = null;
-    let currentHubArea = null; // <-- ADICIONE ESTA LINHA 
-    let currentHubRole = null; // <-- ADICIONE ESTA LINHA
+    let currentHubArea = null; // Área ativa no hub (pode mudar ao trocar de área)
+    let currentHubOriginArea = null; // Área de origem do usuário (definida pelo admin, estática)
+    let currentHubRole = null;
     let currentHubDisplayName = null; // (Req 1) Armazena o nome de usuário globalmente
+    let currentHubAllowedAreas = []; // Áreas liberadas para o usuário
     let currentProfileUrl = defaultProfileUrl; // URL da imagem atual
     let globalCmsDashboards = {}; // Armazena o JSON de dashboards
     let globalCmsAutomations = {}; // Armazena o JSON de automações
@@ -277,8 +279,11 @@ document.addEventListener('DOMContentLoaded', () => {
             applySavedAutomationOrder();
             buildSearchIndex();
         } else {
-            // Se não, busca os dados do servidor
-            fetch('/api/admin/get-cms-data')
+            // Usa o endpoint público (filtrado por área do usuário, ou admin para todos)
+            const cmsEndpoint = currentHubUser && currentHubUser.toLowerCase() === 'admin'
+                ? '/api/admin/get-cms-data'
+                : '/api/hub/get-cms-data';
+            fetch(cmsEndpoint)
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'sucesso') {
@@ -356,14 +361,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function applySettingsLanguagePreference(lang) {
-        updateSettingsLanguageStatus('info', 'profile.language.statusApplying');
         const applyPromise = (window.hubI18n && typeof hubI18n.setLanguage === 'function')
             ? hubI18n.setLanguage(lang, { persist: true })
             : Promise.resolve(lang);
 
         applyPromise
             .then(() => {
-                updateSettingsLanguageStatus('success', 'profile.language.statusSaved');
                 refreshHubSettingsLanguageUI(lang);
                 broadcastLanguageChange(lang);
             })
@@ -508,6 +511,129 @@ document.addEventListener('DOMContentLoaded', () => {
         renderQuickLinks();
     }
 
+    // --- Seletor de Área ---
+
+    // Fecha dropdown ao clicar fora (registrado uma vez)
+    document.addEventListener('click', () => {
+        const dropdown = document.getElementById('hub-area-dropdown');
+        const btn = document.getElementById('hub-area-btn');
+        if (dropdown) dropdown.classList.remove('open');
+        if (btn) btn.classList.remove('open');
+    });
+
+    function getActiveHubArea(username, defaultArea) {
+        try {
+            return sessionStorage.getItem('activeHubArea_' + username) || defaultArea;
+        } catch (e) {
+            return defaultArea;
+        }
+    }
+
+    function renderAreaSelector(activeArea, allowedAreas) {
+        const selector = document.getElementById('hub-area-selector');
+        const btn = document.getElementById('hub-area-btn');
+        const label = document.getElementById('hub-area-btn-label');
+        const dropdown = document.getElementById('hub-area-dropdown');
+        if (!selector || !btn || !label || !dropdown) return;
+
+        const areaIcons = {
+            'Spare Parts': 'fas fa-box-open',
+            'Finished Goods': 'fas fa-truck'
+        };
+        const defaultIcon = 'fas fa-layer-group';
+
+        if (!allowedAreas || allowedAreas.length === 0) {
+            selector.style.display = 'none';
+            return;
+        }
+
+        const iconClass = areaIcons[activeArea] || defaultIcon;
+        label.innerHTML = `<i class="${iconClass}"></i><span>${activeArea}</span>`;
+        selector.style.display = 'block';
+
+        if (allowedAreas.length <= 1) {
+            btn.classList.add('single-area');
+            dropdown.innerHTML = '';
+            return;
+        }
+
+        btn.classList.remove('single-area');
+
+        dropdown.innerHTML = allowedAreas.map(area => `
+            <button class="hub-area-dropdown-item${area === activeArea ? ' active' : ''}" data-area="${area}" type="button">
+                <i class="${areaIcons[area] || defaultIcon}"></i>
+                <span>${area}</span>
+            </button>
+        `).join('');
+
+        dropdown.querySelectorAll('.hub-area-dropdown-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                dropdown.classList.remove('open');
+                btn.classList.remove('open');
+                if (item.dataset.area !== currentHubArea) {
+                    switchHubArea(item.dataset.area);
+                }
+            });
+        });
+
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            const isOpen = dropdown.classList.toggle('open');
+            btn.classList.toggle('open', isOpen);
+        };
+    }
+
+    function switchHubArea(newArea) {
+        if (!currentHubUser) return;
+        fetch('/api/hub/set-active-area', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ area: newArea })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'sucesso') {
+                try {
+                    sessionStorage.setItem('activeHubArea_' + currentHubUser, newArea);
+                } catch (e) { /* ignora */ }
+                currentHubArea = newArea;
+                renderAreaSelector(newArea, currentHubAllowedAreas);
+                // Atualiza os rótulos de área nas subpáginas (se houver)
+                document.querySelectorAll('.hub-area-label-text').forEach(el => { el.textContent = 'Hub ' + newArea; });
+                // Recarrega o conteúdo CMS filtrado
+                loadSearchData();
+                const cardsContainer = document.getElementById('hub-cards-container');
+                if (cardsContainer) {
+                    fetch('/api/hub/get-cms-data')
+                        .then(r => r.json())
+                        .then(cms => {
+                            if (cms.automations) globalCmsAutomations = cms.automations;
+                            if (cms.dashboards) globalCmsDashboards = cms.dashboards;
+                        });
+                }
+            }
+        })
+        .catch(() => {});
+    }
+
+    function switchHubAreaThenNavigate(newArea, url) {
+        if (!currentHubUser) { window.location.href = url; return; }
+        fetch('/api/hub/set-active-area', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ area: newArea })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'sucesso') {
+                try { sessionStorage.setItem('activeHubArea_' + currentHubUser, newArea); } catch (e) {}
+            }
+            window.location.href = url;
+        })
+        .catch(() => { window.location.href = url; });
+    }
+
     function renderQuickLinks() {
         if (!isHubPage || !quickLinksContainer) return;
         quickLinksContainer.innerHTML = ''; 
@@ -530,7 +656,17 @@ document.addEventListener('DOMContentLoaded', () => {
         itemsToRender.forEach(item => {
             const isPinned = pinned.some(p => p.id === item.id);
             const link = document.createElement('a');
-            link.href = `/dashboards?open=${item.id}`; 
+            const itemArea = item.hub_area; // pode ser undefined em itens antigos
+            // Só troca a área se o item EXPLICITAMENTE pertence a outra área
+            if (currentHubUser && currentHubArea && itemArea && itemArea !== currentHubArea) {
+                link.href = '#';
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    switchHubAreaThenNavigate(itemArea, `/dashboards?open=${item.id}`);
+                });
+            } else {
+                link.href = `/dashboards?open=${item.id}`;
+            }
             link.className = 'quick-link';
             const itemIcon = document.createElement('i');
             itemIcon.className = item.icon;
@@ -643,7 +779,7 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function updateAccessDropdown(username = null, profileImageUrl = null, area = null, role = null, displayName = null) {
     currentHubUser = username;
-    currentHubArea = area;
+    currentHubOriginArea = area; // Área de origem (do users.json), não altera currentHubArea
     currentHubRole = role;
     currentHubDisplayName = displayName; 
     accessDropdown.innerHTML = ''; // Limpa o conteúdo
@@ -977,7 +1113,7 @@ function uploadCroppedImage(formData) {
     // --- 1. Mapeamento de Dados ---
     const nameToDisplay = displayName || username;
     const usernameHandle = username; 
-    const location = currentHubArea || 'N/A'; 
+    const location = currentHubOriginArea || 'N/A'; 
     const role = currentHubRole || 'N/A'; 
     
     let accessTagsHtml = '';
@@ -1061,19 +1197,6 @@ function uploadCroppedImage(formData) {
                     <label for="profile-username">Login de Funcionário</label>
                     <input type="text" id="profile-username" class="profile-input" value="${usernameHandle.toUpperCase()}" readonly disabled>
                     <i class="fas fa-check-circle input-check-icon" title="Nome de funcionário verificado"></i>
-                </div>
-            </div>
-            
-            <hr class="form-divider">
-            
-            <div class="form-group permissions-group">
-                <label>Permissões</label>
-                <div class="form-group-inline">
-                    <div class="toggle-switch">
-                        <input type="checkbox" id="toggle-terceiros" class="toggle-input">
-                        <label for="toggle-terceiros" class="toggle-label"></label>
-                    </div>
-                    <span>Permitir acesso a dados de terceiros.</span>
                 </div>
             </div>
         </div>
@@ -1446,7 +1569,6 @@ function uploadCroppedImage(formData) {
     }
 
     function handleSaveSettings() {
-        showLanguageStatus('info', 'profile.language.statusApplying');
         const selectedLang = settingsTabState.pendingLanguage || pendingLanguagePreference || 'pt';
         const applyPromise = window.hubI18n && typeof hubI18n.setLanguage === 'function'
             ? hubI18n.setLanguage(selectedLang, { persist: true })
@@ -1457,7 +1579,6 @@ function uploadCroppedImage(formData) {
                 pendingLanguagePreference = selectedLang;
                 settingsTabState.initialLanguage = selectedLang;
                 setSettingsDirtyFlag(false);
-                showLanguageStatus('success', 'profile.language.statusSaved', true);
                 broadcastLanguageChange(selectedLang);
                 if (isHubPage) {
                     refreshHubSettingsLanguageUI(selectedLang);
@@ -1767,18 +1888,6 @@ function uploadCroppedImage(formData) {
         });
     });
 
-    // Persistência do toggle de permissões
-    const permissionsToggle = modal.querySelector('#toggle-terceiros');
-    if (permissionsToggle) {
-        const permissionsToggleKey = getStorageKey('permissionsToggle');
-        const savedPermissionsState = localStorage.getItem(permissionsToggleKey);
-        permissionsToggle.checked = savedPermissionsState === 'true';
-
-        permissionsToggle.addEventListener('change', () => {
-            localStorage.setItem(permissionsToggleKey, permissionsToggle.checked ? 'true' : 'false');
-        });
-    }
-    
     // --- 7. Define o estado inicial do Footer ---
     updateFooterButtons('tab-profile'); // Define o estado inicial para a aba "Perfil"
 
@@ -2285,8 +2394,8 @@ function openEditNameModal(currentName) {
         .then(response => response.json())
         .then(data => {
             if (data.status === 'sucesso') {
-                // (Req 1) Recarrega a página. O check_session fará o resto.
-                window.location.reload();
+                // Redireciona para a mainpage após login
+                window.location.href = '/';
             } else { showHubLoginError(data.mensagem || "Erro desconhecido."); }
         })
         .catch(() => showHubLoginError("Erro de comunicação com o servidor."));
@@ -2335,7 +2444,7 @@ function openEditNameModal(currentName) {
             createConnectionItem('bw', '/static/icones/bwhanashort_logo.png', 'BW HANA', bwConn)
         );
         connectionsListContainer.appendChild(
-            createConnectionItem('tableau', '/static/icones/tableau_logo.png', 'Tableau', tableauConn)
+            createConnectionItem('salesforce', '/static/icones/salesforce_logo.png', 'Salesforce', connections.salesforce)
         );
     }
 
@@ -2344,7 +2453,7 @@ function openEditNameModal(currentName) {
         item.className = 'connection-item';
         item.dataset.system = system;
 
-        const iconClass = (system === 'tableau') ? 'connection-icon tableau-icon' : 'connection-icon';
+        const iconClass = (system === 'salesforce') ? 'connection-icon salesforce-icon' : 'connection-icon';
         let iconHtml = '';
         if (system === 'sap') {
             iconHtml = `
@@ -2356,6 +2465,8 @@ function openEditNameModal(currentName) {
                 <img src="/static/icones/tableau_logo.png" alt="Tableau Logo" class="${iconClass} logo-light">
                 <img src="/static/icones/tableaublack_logo.png" alt="Tableau Logo" class="${iconClass} logo-dark">
             `;
+        } else if (system === 'salesforce') {
+            iconHtml = `<img src="/static/icones/salesforce_logo.png" alt="Salesforce Logo" class="${iconClass}">`;
         } else {
             iconHtml = `<img src="${iconSrc}" alt="${systemName} Logo" class="${iconClass}">`;
         }
@@ -2466,8 +2577,9 @@ fetch('/api/hub/check-session')
     
     if(data.status === 'logado') {
         currentHubUser = data.username; 
-        currentHubArea = data.area;
+        currentHubOriginArea = data.area; // Área de origem (estática)
         currentHubRole = data.role;
+        currentHubAllowedAreas = data.allowed_areas || [data.area];
         localStorage.setItem('hubUsername', data.username); 
         
         // --- INÍCIO DA MODIFICAÇÃO (Req 1) ---
@@ -2475,6 +2587,11 @@ fetch('/api/hub/check-session')
         currentHubDisplayName = data.display_name;
         updateAccessDropdown(data.username, data.profile_image, data.area, data.role, currentHubDisplayName);
         // --- FIM DA MODIFICAÇÃO ---
+
+        // --- Obtém área ativa (pode diferir da área padrão se o usuário trocou) ---
+        const activeArea = getActiveHubArea(data.username, data.area);
+        currentHubArea = activeArea;
+        renderAreaSelector(activeArea, currentHubAllowedAreas);
 
         try {
             const savedAutomations = sessionStorage.getItem(`sortedAutomations_${data.username}`);
@@ -2493,7 +2610,9 @@ fetch('/api/hub/check-session')
     } else {
         currentHubUser = null;
         currentHubArea = null;
+        currentHubOriginArea = null;
         currentHubRole = null;
+        currentHubAllowedAreas = [];
         currentHubDisplayName = null; // (Limpa o nome)
         localStorage.removeItem('hubUsername');
         updateAccessDropdown(null, data.profile_image, null, null, null);
@@ -2761,7 +2880,7 @@ fetch('/api/hub/check-session')
                     const newUser = {
                         username: 'temp_user_' + Date.now(), // ID Temporário
                         password: '',
-                        area: 'Logística', // Padrão
+                        area: 'Spare Parts', // Padrão
                         role: 'Analista',  // Padrão
                         isNew: true
                     };
@@ -2828,33 +2947,21 @@ fetch('/api/hub/check-session')
             renderAdminUsers(); // Renderiza a lista local
         }
         
-        // 3. Busca Dados do CMS (SÓ SE ESTIVER VAZIO)
-        const automationsLoaded = Object.keys(globalCmsAutomations).length > 0;
-        const dashboardsLoaded = Object.keys(globalCmsDashboards).length > 0;
-
-        if (automationsLoaded && dashboardsLoaded) {
-            renderAdminDashboards();
-            renderAdminAutomations();
-        } else {
-            fetch('/api/admin/get-cms-data')
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'sucesso') {
-                    if (!dashboardsLoaded) {
-                        globalCmsDashboards = data.dashboards;
-                    }
-                    if (!automationsLoaded) {
-                        globalCmsAutomations = data.automations;
-                        applySavedAutomationOrder();
-                    }
-                    renderAdminDashboards();
-                    renderAdminAutomations();
-                } else {
-                    adminDashboardsList.innerHTML = `<p class="no-requests">Erro: ${data.mensagem}</p>`;
-                    adminAutomationsList.innerHTML = `<p class="no-requests">Erro: ${data.mensagem}</p>`;
-                }
-            });
-        }
+        // 3. Busca Dados do CMS (SEMPRE re-busca do endpoint admin para dados completos)
+        fetch('/api/admin/get-cms-data')
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'sucesso') {
+                globalCmsDashboards = data.dashboards;
+                globalCmsAutomations = data.automations;
+                applySavedAutomationOrder();
+                renderAdminDashboards();
+                renderAdminAutomations();
+            } else {
+                adminDashboardsList.innerHTML = `<p class="no-requests">Erro: ${data.mensagem}</p>`;
+                adminAutomationsList.innerHTML = `<p class="no-requests">Erro: ${data.mensagem}</p>`;
+            }
+        });
     }
 
     // SUBSTITUA a função renderAdminRequests por esta:
@@ -3098,6 +3205,10 @@ function handleAdminReject(e) {
             searchContainer.classList.remove('users-active'); // Remove a classe CSS
         }
 
+        // Remove filtros dinâmicos (serão re-adicionados se necessário)
+        document.querySelectorAll('.admin-filter-wrapper').forEach(el => el.remove());
+        if (searchContainer) searchContainer.classList.remove('has-area-filter');
+
         const searchableTabs = ['users', 'dashboards', 'automations'];
         
         if (searchContainer) { 
@@ -3120,30 +3231,47 @@ function handleAdminReject(e) {
         } else if (tabName === 'users') {
             tabAdminUsers.classList.add('active');
             adminUsersTab.classList.remove('hidden');
-            
-            // (Req 1) Move o botão de Usuário e adiciona classe
+
+            // Adiciona filtros de área e função e botão para usuários
+            if (searchContainer) {
+                addAdminAreaFilter(searchContainer);
+                addAdminRoleFilter(searchContainer);
+                searchContainer.classList.add('has-area-filter');
+                searchContainer.classList.add('users-active');
+            }
             if (adminAddUserBtn && searchContainer) {
                 searchContainer.appendChild(adminAddUserBtn);
                 adminAddUserBtn.style.display = 'block';
-                searchContainer.classList.add('users-active'); // Adiciona classe CSS
             }
 
         } else if (tabName === 'dashboards') {
             tabAdminDashboards.classList.add('active');
             adminDashboardsTab.classList.remove('hidden');
             
-            if (adminAddDashboardBtn && searchContainer) {
-                searchContainer.appendChild(adminAddDashboardBtn);
-                adminAddDashboardBtn.style.display = 'block';
+            // Adiciona filtros de área e plataforma, depois o botão Novo
+            if (searchContainer) {
+                addAdminAreaFilter(searchContainer);
+                addAdminPlatformFilter(searchContainer);
+                searchContainer.classList.add('has-area-filter');
+                if (adminAddDashboardBtn) {
+                    searchContainer.appendChild(adminAddDashboardBtn);
+                    adminAddDashboardBtn.style.display = 'block';
+                }
             }
 
         } else if (tabName === 'automations') {
             tabAdminAutomations.classList.add('active');
             adminAutomationsTab.classList.remove('hidden');
             
-            if (adminAddAutomationBtn && searchContainer) {
-                searchContainer.appendChild(adminAddAutomationBtn);
-                adminAddAutomationBtn.style.display = 'block';
+            // Adiciona filtros de área e plataforma, depois o botão Novo
+            if (searchContainer) {
+                addAdminAreaFilter(searchContainer);
+                addAdminAutomationPlatformFilter(searchContainer);
+                searchContainer.classList.add('has-area-filter');
+                if (adminAddAutomationBtn) {
+                    searchContainer.appendChild(adminAddAutomationBtn);
+                    adminAddAutomationBtn.style.display = 'block';
+                }
             }
         }
         
@@ -3156,6 +3284,153 @@ function handleAdminReject(e) {
                 adminActiveDescription.textContent = copy.description;
             }
         }
+    }
+
+    function createAdminCustomSelect(id, options) {
+        const wrap = document.createElement('div');
+        wrap.className = 'admin-custom-select';
+
+        // Trigger (botão visível)
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'admin-select-trigger';
+
+        const valueSpan = document.createElement('span');
+        valueSpan.className = 'admin-select-value';
+        valueSpan.textContent = options[0].label;
+
+        const arrow = document.createElement('i');
+        arrow.className = 'fas fa-chevron-down admin-select-arrow';
+
+        trigger.appendChild(valueSpan);
+        trigger.appendChild(arrow);
+
+        // Painel de opções
+        const panel = document.createElement('div');
+        panel.className = 'admin-select-panel';
+
+        // Select oculto para compatibilidade com handleAdminSearch
+        const hidden = document.createElement('select');
+        hidden.id = id;
+        hidden.className = 'admin-area-filter-hidden';
+        hidden.setAttribute('aria-hidden', 'true');
+        hidden.tabIndex = -1;
+
+        options.forEach((opt, idx) => {
+            // Opção visual
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'admin-select-option' + (idx === 0 ? ' is-selected' : '');
+            btn.dataset.value = opt.value;
+
+            if (idx === 0) {
+                const check = document.createElement('i');
+                check.className = 'fas fa-check admin-select-check';
+                btn.appendChild(check);
+            } else {
+                const check = document.createElement('i');
+                check.className = 'fas fa-check admin-select-check';
+                btn.appendChild(check);
+            }
+            btn.appendChild(document.createTextNode(opt.label));
+
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                panel.querySelectorAll('.admin-select-option').forEach(b => b.classList.remove('is-selected'));
+                btn.classList.add('is-selected');
+                valueSpan.textContent = opt.label;
+                hidden.value = opt.value;
+                wrap.classList.remove('open');
+                handleAdminSearch();
+            });
+
+            panel.appendChild(btn);
+
+            // Opção oculta
+            const o = document.createElement('option');
+            o.value = opt.value;
+            o.textContent = opt.label;
+            hidden.appendChild(o);
+        });
+
+        trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = wrap.classList.contains('open');
+            document.querySelectorAll('.admin-custom-select.open').forEach(el => el.classList.remove('open'));
+            if (!isOpen) wrap.classList.add('open');
+        });
+
+        wrap.appendChild(trigger);
+        wrap.appendChild(panel);
+        wrap.appendChild(hidden);
+        return wrap;
+    }
+
+    // Fecha dropdowns ao clicar fora
+    document.addEventListener('click', () => {
+        document.querySelectorAll('.admin-custom-select.open').forEach(el => el.classList.remove('open'));
+    });
+
+    function addAdminAreaFilter(container) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'admin-filter-wrapper';
+        const label = document.createElement('span');
+        label.className = 'admin-filter-label';
+        label.textContent = 'Área';
+        wrapper.appendChild(label);
+        wrapper.appendChild(createAdminCustomSelect('admin-area-filter', [
+            { value: '', label: 'Todas' },
+            { value: 'Spare Parts', label: 'Spare Parts' },
+            { value: 'Finished Goods', label: 'Finished Goods' }
+        ]));
+        container.appendChild(wrapper);
+    }
+
+    function addAdminRoleFilter(container) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'admin-filter-wrapper';
+        const label = document.createElement('span');
+        label.className = 'admin-filter-label';
+        label.textContent = 'Função';
+        wrapper.appendChild(label);
+        wrapper.appendChild(createAdminCustomSelect('admin-role-filter', [
+            { value: '', label: 'Todas' },
+            { value: 'Analista', label: 'Analista' },
+            { value: 'Executor', label: 'Executor' }
+        ]));
+        container.appendChild(wrapper);
+    }
+
+    function addAdminPlatformFilter(container) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'admin-filter-wrapper';
+        const label = document.createElement('span');
+        label.className = 'admin-filter-label';
+        label.textContent = 'Plataforma';
+        wrapper.appendChild(label);
+        wrapper.appendChild(createAdminCustomSelect('admin-platform-filter', [
+            { value: '', label: 'Todas' },
+            { value: 'looker', label: 'Looker' },
+            { value: 'tableau', label: 'Tableau' },
+            { value: 'library', label: 'Library' }
+        ]));
+        container.appendChild(wrapper);
+    }
+
+    function addAdminAutomationPlatformFilter(container) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'admin-filter-wrapper';
+        const label = document.createElement('span');
+        label.className = 'admin-filter-label';
+        label.textContent = 'Plataforma';
+        wrapper.appendChild(label);
+        wrapper.appendChild(createAdminCustomSelect('admin-platform-filter', [
+            { value: '', label: 'Todas' },
+            { value: 'sap', label: 'SAP' },
+            { value: 'bw', label: 'BW' },
+            { value: 'salesforce', label: 'Salesforce' }
+        ]));
+        container.appendChild(wrapper);
     }
     
     // Listeners das Abas de Admin
@@ -3195,10 +3470,24 @@ function handleAdminReject(e) {
         }
 
         // Opções para os <select>
-        const areaOptions = ['Logística', 'Comercial', 'Financeiro', 'Jurídico', 'Vendas']
+        const areaOptions = ['Spare Parts', 'Finished Goods']
             .map(a => `<option value="${a}" ${user.area === a ? 'selected' : ''}>${a}</option>`).join('');
         const roleOptions = ['Analista', 'Executor']
             .map(r => `<option value="${r}" ${user.role === r ? 'selected' : ''}>${r}</option>`).join('');
+
+        // Checkboxes de áreas permitidas
+        const userAllowedAreas = user.allowed_areas || [user.area];
+        const allowedAreasCheckboxes = (isNew)
+            ? ['Spare Parts', 'Finished Goods'].map(a => `
+                <label class="hub-area-checkbox-label">
+                    <input type="checkbox" class="allowed-area-checkbox" value="${a}" ${a === (user.area || 'Spare Parts') ? 'checked' : ''}>
+                    ${a}
+                </label>`).join('')
+            : ['Spare Parts', 'Finished Goods'].map(a => `
+                <label class="hub-area-checkbox-label">
+                    <input type="checkbox" class="allowed-area-checkbox" value="${a}" ${userAllowedAreas.includes(a) ? 'checked' : ''}>
+                    ${a}
+                </label>`).join('');
 
         // (Req 1) Define o HTML baseado se é [NOVO] ou [EXISTENTE]
         let mainHtml, editHtml;
@@ -3231,6 +3520,10 @@ function handleAdminReject(e) {
                             <label>Função</label>
                             <select class="hub-modal-input edit-role-select">${roleOptions}</select>
                         </div>
+                    </div>
+                    <div class="modal-input-group">
+                        <label>Áreas liberadas:</label>
+                        <div class="allowed-areas-checkboxes">${allowedAreasCheckboxes}</div>
                     </div>
                     <div class="admin-user-edit-actions">
                         <button class="button btn-cancel admin-user-cancel-btn">Cancelar</button>
@@ -3283,6 +3576,10 @@ function handleAdminReject(e) {
                             <select class="hub-modal-input edit-role-select">${roleOptions}</select>
                         </div>
                     </div>
+                    <div class="modal-input-group">
+                        <label>Áreas liberadas:</label>
+                        <div class="allowed-areas-checkboxes">${allowedAreasCheckboxes}</div>
+                    </div>
                     <div class="admin-user-edit-actions">
                         <button class="button btn-cancel admin-user-cancel-btn">Cancelar</button>
                         <button class="button btn-success admin-user-save-btn">Salvar</button>
@@ -3326,6 +3623,7 @@ function handleAdminReject(e) {
         const newPassword = item.querySelector('.edit-password-input').value;
         const newArea = item.querySelector('.edit-area-select').value;
         const newRole = item.querySelector('.edit-role-select').value;
+        const allowedAreas = Array.from(item.querySelectorAll('.allowed-area-checkbox:checked')).map(cb => cb.value);
 
         if (!newUsername || !newPassword) {
             alert("Login de funcionário e Senha são obrigatórios para criar um novo usuário.");
@@ -3336,7 +3634,8 @@ function handleAdminReject(e) {
             username: newUsername,
             password: newPassword,
             area: newArea,
-            role: newRole
+            role: newRole,
+            allowed_areas: allowedAreas.length ? allowedAreas : [newArea]
         };
 
         btn.disabled = true;
@@ -3392,15 +3691,25 @@ function handleAdminReject(e) {
         if (!searchInput) return;
         
         const searchTerm = searchInput.value.toLowerCase();
+        const areaFilter = document.getElementById('admin-area-filter');
+        const selectedArea = areaFilter ? areaFilter.value : '';
+        const roleFilter = document.getElementById('admin-role-filter');
+        const selectedRole = roleFilter ? roleFilter.value : '';
+        const platformFilter = document.getElementById('admin-platform-filter');
+        const selectedPlatform = platformFilter ? platformFilter.value : '';
 
         // 1. Descobre qual painel de aba está ativo
         let activePanel = null;
+        let activeTabName = null;
         if (!adminUsersTab.classList.contains('hidden')) {
             activePanel = adminUsersTab;
+            activeTabName = 'users';
         } else if (!adminDashboardsTab.classList.contains('hidden')) {
             activePanel = adminDashboardsTab;
+            activeTabName = 'dashboards';
         } else if (!adminAutomationsTab.classList.contains('hidden')) {
             activePanel = adminAutomationsTab;
+            activeTabName = 'automations';
         }
 
         // Se nenhum painel pesquisável estiver ativo, não faz nada
@@ -3419,8 +3728,50 @@ function handleAdminReject(e) {
             const nameElement = card.querySelector('.username, .admin-cms-info .name');
             if (nameElement) {
                 const name = nameElement.textContent.toLowerCase();
-                if (name.includes(searchTerm)) {
-                    card.style.display = 'flex'; // 'flex' é o padrão de display do card
+                const matchesSearch = name.includes(searchTerm);
+
+                // Filtro de área (para cards CMS e cards de usuário)
+                let matchesArea = true;
+                if (selectedArea) {
+                    if (card.classList.contains('admin-cms-card')) {
+                        const detailsEl = card.querySelector('.admin-cms-info .details');
+                        if (detailsEl) {
+                            const areaMatch = detailsEl.textContent.match(/Área:\s*([^|]+)/);
+                            const cardArea = areaMatch ? areaMatch[1].trim() : '';
+                            matchesArea = cardArea === selectedArea;
+                        }
+                    } else if (card.classList.contains('admin-user-card')) {
+                        const detailsEl = card.querySelector('.admin-user-info .details');
+                        if (detailsEl) {
+                            const areaMatch = detailsEl.textContent.match(/Área:\s*([^|]+)/);
+                            const cardArea = areaMatch ? areaMatch[1].trim() : '';
+                            matchesArea = cardArea === selectedArea;
+                        }
+                    }
+                }
+
+                let matchesRole = true;
+                if (selectedRole && activeTabName === 'users' && card.classList.contains('admin-user-card')) {
+                    const detailsEl = card.querySelector('.admin-user-info .details');
+                    if (detailsEl) {
+                        const roleMatch = detailsEl.textContent.match(/Função:\s*([^|]+)/);
+                        const cardRole = roleMatch ? roleMatch[1].trim() : '';
+                        matchesRole = cardRole === selectedRole;
+                    }
+                }
+
+                // Filtro de plataforma (para cards de dashboard)
+                let matchesPlatform = true;
+                if (selectedPlatform && card.classList.contains('admin-cms-card')) {
+                    if (activeTabName === 'dashboards') {
+                        matchesPlatform = card.dataset.systemKey === selectedPlatform;
+                    } else if (activeTabName === 'automations') {
+                        matchesPlatform = (card.dataset.platform || '').toLowerCase() === selectedPlatform;
+                    }
+                }
+
+                if (matchesSearch && matchesArea && matchesRole && matchesPlatform) {
+                    card.style.display = 'flex';
                     itemsFound++;
                 } else {
                     card.style.display = 'none';
@@ -3437,8 +3788,9 @@ function handleAdminReject(e) {
             listContainer.appendChild(noResultsMsg);
         }
 
-        if (itemsFound === 0 && searchTerm !== '') {
-            noResultsMsg.textContent = 'Nenhum item encontrado para "' + searchInput.value + '".';
+        const hasFilter = searchTerm !== '' || selectedArea !== '' || selectedRole !== '' || selectedPlatform !== '';
+        if (itemsFound === 0 && hasFilter) {
+            noResultsMsg.textContent = 'Nenhum item encontrado para o filtro selecionado.';
             noResultsMsg.style.display = 'block';
         } else {
             noResultsMsg.style.display = 'none';
@@ -3511,8 +3863,10 @@ function handleAdminReject(e) {
             username: username,
             password: item.querySelector('.edit-password-input').value, // Envia vazio ou preenchido
             area: item.querySelector('.edit-area-select').value,
-            role: item.querySelector('.edit-role-select').value
+            role: item.querySelector('.edit-role-select').value,
+            allowed_areas: Array.from(item.querySelectorAll('.allowed-area-checkbox:checked')).map(cb => cb.value)
         };
+        if (!payload.allowed_areas.length) payload.allowed_areas = [payload.area];
 
         btn.disabled = true;
 
@@ -3643,7 +3997,7 @@ function handleAdminReject(e) {
                 <div class="admin-cms-main">
                     <div class="admin-cms-info">
                         <div class="name">${key}</div>
-                        <div class="details"><strong>Sistema:</strong> ${auto.type.toUpperCase()} | <strong>Macro:</strong> ${auto.macro || 'N/A'}</div>
+                        <div class="details"><strong>Sistema:</strong> ${auto.type.toUpperCase()} | <strong>Macro:</strong> ${auto.macro || 'N/A'} | <strong>Área:</strong> ${auto.hub_area || 'Spare Parts'}</div>
                     </div>
                     <div class="admin-cms-actions">
                         <button class="button btn-warning admin-auto-edit-btn">Editar</button>
@@ -3663,6 +4017,14 @@ function handleAdminReject(e) {
                         <select class="hub-modal-input edit-auto-type">
                             <option value="sap" ${auto.type === 'sap' ? 'selected' : ''}>SAP</option>
                             <option value="bw" ${auto.type === 'bw' ? 'selected' : ''}>BW</option>
+                            <option value="salesforce" ${auto.type === 'salesforce' ? 'selected' : ''}>Salesforce</option>
+                        </select>
+                    </div>
+                    <div class="modal-input-group">
+                        <label>Área:</label>
+                        <select class="hub-modal-input edit-auto-hub-area">
+                            <option value="Spare Parts" ${(auto.hub_area || 'Spare Parts') === 'Spare Parts' ? 'selected' : ''}>Spare Parts</option>
+                            <option value="Finished Goods" ${auto.hub_area === 'Finished Goods' ? 'selected' : ''}>Finished Goods</option>
                         </select>
                     </div>
                     <div class="modal-input-group">
@@ -3819,6 +4181,7 @@ function handleAdminReject(e) {
                 arquivo: "", // Vazio
                 macro: "", // Vazio
                 type: "sap",
+                hub_area: "Spare Parts", // Padrão
                 isNew: true, // Flag para o "Cancelar"
                 // Novos campos de preview
                 gif: "",
@@ -3854,6 +4217,7 @@ function handleAdminReject(e) {
         const form = item.querySelector('.admin-cms-edit-form');
         const newKey = form.querySelector('.edit-auto-name').value;
         const newType = form.querySelector('.edit-auto-type').value;
+        const newHubArea = form.querySelector('.edit-auto-hub-area').value;
         const newMacro = form.querySelector('.edit-auto-macro').value;
         const newFile = form.querySelector('.edit-auto-file').value;
         
@@ -3869,6 +4233,7 @@ function handleAdminReject(e) {
 
         const newData = {
             type: newType,
+            hub_area: newHubArea,
             macro: newMacro || null,
             arquivo: newFile || null,
             gif: newGif || null,
@@ -3915,6 +4280,7 @@ function handleAdminReject(e) {
         
         // 5. Re-renderiza a lista (agora na ordem correta da memória)
         renderAdminAutomations();
+        handleAdminSearch();
 
         // 6. Se era um item NOVO, rola a lista para o topo
         if (wasNewItem) {
@@ -3930,6 +4296,7 @@ function handleAdminReject(e) {
         delete globalCmsAutomations[key];
         saveCmsData('automations');
         renderAdminAutomations();
+        handleAdminSearch();
     }
 
 
@@ -3977,9 +4344,9 @@ function handleAdminReject(e) {
                     card.innerHTML = `
                         <div class="admin-cms-main">
                             <div class="admin-cms-info">
-                                <div class="name">${item.name}</div>
+                                <div class="name">${item.name}${item.general ? ' <span class="admin-badge-general">Geral</span>' : ''}</div>
                                 <div class="details">
-                                    <strong>Plataforma:</strong> ${systemData.system_name} | <strong>Área:</strong> ${areaData.name}
+                                    <strong>Plataforma:</strong> ${systemData.system_name} | <strong>Negócio:</strong> ${areaData.name} | <strong>Área:</strong> ${item.hub_area || 'Spare Parts'}
                                 </div>
                             </div>
                             <div class="admin-cms-actions">
@@ -3995,8 +4362,15 @@ function handleAdminReject(e) {
                                     <select class="hub-modal-input edit-dash-systemKey">${itemSystemOptionsHtml}</select>
                                 </div>
                                 <div class="modal-input-group">
-                                    <label>Área:</label>
+                                    <label>Negócio:</label>
                                     <select class="hub-modal-input edit-dash-areaKey">${areaOptionsHtml}</select>
+                                </div>
+                                <div class="modal-input-group">
+                                    <label>Área:</label>
+                                    <select class="hub-modal-input edit-dash-hub-area">
+                                    <option value="Spare Parts" ${(item.hub_area || 'Spare Parts') === 'Spare Parts' ? 'selected' : ''}>Spare Parts</option>
+                                    <option value="Finished Goods" ${item.hub_area === 'Finished Goods' ? 'selected' : ''}>Finished Goods</option>
+                                    </select>
                                 </div>
                             </div>
 
@@ -4030,6 +4404,14 @@ function handleAdminReject(e) {
                                 <input type="text" class="hub-modal-input edit-dash-width" value="${item.width || ''}">
                             </div>
                             
+                            <div class="modal-input-group admin-toggle-group">
+                                <label class="admin-toggle-label">
+                                    <input type="checkbox" class="edit-dash-general" ${item.general ? 'checked' : ''}>
+                                    <span>Dashboard Geral</span>
+                                </label>
+                                <small class="admin-toggle-hint">Visível para todos, inclusive usuários não logados.</small>
+                            </div>
+
                             <div class="admin-cms-edit-actions">
                                 <button class="button btn-cancel admin-dash-cancel-btn">Cancelar</button>
                                 <button class="button btn-success admin-dash-save-btn">Salvar</button>
@@ -4112,6 +4494,7 @@ function handleAdminReject(e) {
         // Localização NOVA (para onde o item VAI)
         const newSystemKey = form.querySelector('.edit-dash-systemKey').value;
         const newAreaKey = form.querySelector('.edit-dash-areaKey').value;
+        const newHubArea = form.querySelector('.edit-dash-hub-area').value;
 
         // Pega o item original (do local antigo)
         const dashboardItem = globalCmsDashboards[oldSystemKey].areas[oldAreaKey].items[oldIndex];
@@ -4124,6 +4507,8 @@ function handleAdminReject(e) {
         dashboardItem.text = form.querySelector('.edit-dash-text').value;
         dashboardItem.tags = form.querySelector('.edit-dash-tags').value;
         dashboardItem.width = form.querySelector('.edit-dash-width').value || null;
+        dashboardItem.hub_area = newHubArea;
+        dashboardItem.general = form.querySelector('.edit-dash-general').checked;
         dashboardItem.isNew = false; // (Garante que a flag de "novo" seja removida)
 
         // (Req 1) Lógica de MOVER o item se o sistema ou área mudou
@@ -4146,6 +4531,7 @@ function handleAdminReject(e) {
         saveCmsData('dashboards');
         // Re-renderiza a UI inteira com a nova estrutura
         renderAdminDashboards();
+        handleAdminSearch();
     }
     
     function handleDashboardDelete(e) {
@@ -4158,6 +4544,7 @@ function handleAdminReject(e) {
         
         saveCmsData('dashboards');
         renderAdminDashboards();
+        handleAdminSearch();
     }
 
 
@@ -4221,8 +4608,10 @@ function handleAdminReject(e) {
         if (itemRemoved) {
             if (container.id === 'admin-automations-list') {
                 renderAdminAutomations();
+                handleAdminSearch();
             } else if (container.id === 'admin-dashboards-list') {
                 renderAdminDashboards();
+                handleAdminSearch();
             } else if (container.id === 'admin-user-list-container') {
                 // (Req 1) Adiciona o re-render para usuários
                 renderAdminUsers();

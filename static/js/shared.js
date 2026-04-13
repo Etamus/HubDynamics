@@ -1,6 +1,6 @@
 const HUB_SUPPORTED_LANGUAGES = ['pt', 'en'];
 const HUB_I18N_ENTRIES = {
-    'app.title': { pt: 'Hub Spare Parts', en: 'Hub Spare Parts' },
+    'app.title': { pt: 'Spare Parts', en: 'Spare Parts' },
     'header.subtitle': { pt: 'Selecione a ferramenta que deseja utilizar', en: 'Select the tool you want to use' },
     'search.placeholder': { pt: 'Pesquisar ferramenta...', en: 'Search for a tool...' },
     'search.label': { pt: 'Pesquisar ferramenta', en: 'Search tool' },
@@ -723,3 +723,23 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+// --- Atualiza rótulo de área nas subpáginas ---
+(function() {
+    const labels = document.querySelectorAll('.hub-area-label-text');
+    if (!labels.length) return;
+    try {
+        const username = localStorage.getItem('hubUsername');
+        if (!username) {
+            labels.forEach(el => { el.textContent = 'Hub Dynamics'; });
+            return;
+        }
+        // Prioriza a área definida pelo backend (data-active-area no body)
+        const serverArea = document.body.dataset.activeArea;
+        if (serverArea) {
+            sessionStorage.setItem('activeHubArea_' + username, serverArea);
+        }
+        const activeArea = serverArea || sessionStorage.getItem('activeHubArea_' + username) || 'Spare Parts';
+        labels.forEach(el => { el.textContent = 'Hub ' + activeArea; });
+    } catch (e) { /* ignora */ }
+})();
