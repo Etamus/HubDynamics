@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <title>Hub Spare Parts - Automação</title>
+    <title>Hub Dynamics - Automação</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="/static/css/shared.css">
     <link rel="stylesheet" href="/static/css/automacao.css">
 </head>
-<body>
+<body data-active-area="{{ active_area | default('Spare Parts') }}">
     <script>
       // Script de carregamento instantâneo do tema (para evitar flicker)
       (function() {
@@ -45,11 +45,11 @@
     </script>
 
     <header class="internal-header">
-        <a href="/" class="internal-logo" title="Hub Spare Parts">
-            <img src="/static/icones/hub_logo.png" alt="Hub Spare Parts" class="logo-light">
-            <img src="/static/icones/hub_logo_branco.png" alt="Hub Spare Parts" class="logo-dark">
+        <a href="/" class="internal-logo" title="Hub Dynamics">
+            <img src="/static/icones/hub_logo.png" alt="Hub Dynamics" class="logo-light">
+            <img src="/static/icones/hub_logo_branco.png" alt="Hub Dynamics" class="logo-dark">
             <div class="internal-logo-text">
-                <span>Hub Spare Parts</span>
+                <span class="hub-area-label-text">Hub Spare Parts</span>
                 <small>Automações</small>
             </div>
         </a>
@@ -116,14 +116,22 @@
     <div class="container">
         
         <div class="system-selector">
+            {% if has_sap %}
             <label>
-                <input type="radio" name="login_system" value="sap" checked>
+                <input type="radio" name="login_system" value="sap" {{ 'checked' if has_sap }}>
                 <img src="/static/icones/sap_logo.png" alt="Logo SAP" class="logo-light">
                 <img src="/static/icones/sapblack_logo.png" alt="Logo SAP" class="logo-dark">
             </label>
-            <label> <input type="radio" name="login_system" value="bw"> <img src="/static/icones/bwhana_logo.png" alt="Logo BW HANA"> </label>
+            {% endif %}
+            {% if has_bw %}
+            <label> <input type="radio" name="login_system" value="bw" {{ 'checked' if not has_sap }}> <img src="/static/icones/bwhana_logo.png" alt="Logo BW HANA"> </label>
+            {% endif %}
+            {% if has_salesforce %}
+            <label> <input type="radio" name="login_system" value="salesforce" {{ 'checked' if not has_sap and not has_bw }}> <img src="/static/icones/salesforce_logo.png" alt="Logo Salesforce"> </label>
+            {% endif %}
         </div>
 
+        {% if has_sap %}
         <div id="sap-tasks-section" class="tasks-section">
     <div class="button-container">
         {% for nome, config in macros.items() %}
@@ -162,7 +170,9 @@
         {% endfor %}
     </div>
 </div>
+        {% endif %}
         
+        {% if has_bw %}
         <div id="bw-tasks-section" class="tasks-section hidden">
     <div class="button-container">
         {% for nome, config in macros.items() %}
@@ -180,6 +190,26 @@
         {% endfor %}
     </div>
 </div>
+        {% endif %}
+
+        {% if has_salesforce %}
+        <div id="salesforce-tasks-section" class="tasks-section hidden">
+    <div class="button-container">
+        {% for nome, config in macros.items() %}
+            {% if config.type == 'salesforce' %} 
+                <div class="task-button" 
+                     data-task-name="{{ nome }}" 
+                     data-task-type="salesforce"
+                     data-preview-gif="{{ config.gif | default('', true) }}"
+                     data-preview-text="{{ config.text | default('', true) }}"
+                     data-preview-tags="{{ config.tags | default('', true) }}">
+                    <div class="button-text">{{ nome }}</div>
+                </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+</div>
+        {% endif %}
     
 <div id="preview-panel">
         <img id="preview-image" src="" alt="Preview da Automação">
@@ -194,6 +224,7 @@
             <img id="modal-logo-sap-light" src="/static/icones/sap_logo.png" alt="Logo SAP" class="modal-logo logo-light hidden">
             <img id="modal-logo-sap-dark" src="/static/icones/sapblack_logo.png" alt="Logo SAP" class="modal-logo logo-dark hidden">
             <img id="modal-logo-bw" src="/static/icones/bwhana_logo.png" alt="Logo BW HANA" class="modal-logo hidden">
+            <img id="modal-logo-salesforce" src="/static/icones/salesforce_logo.png" alt="Logo Salesforce" class="modal-logo hidden">
             
             <p id="modal-subtitle">Insira suas credenciais para logar.</p>
             <div class="modal-form">

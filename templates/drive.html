@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hub Spare Parts - Drive Online</title>
+    <title>Hub Dynamics - Drive Online</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
   <link rel="stylesheet" href="/static/css/hub.css">
   <link rel="stylesheet" href="/static/css/shared.css">
   <link rel="stylesheet" href="/static/css/drive.css">
 </head>
-<body>
+<body data-active-area="{{ active_area | default('Spare Parts') }}">
     <script>
       // Script de carregamento instantâneo do tema (para evitar flicker)
       (function() {
@@ -45,11 +45,11 @@
     </script>
 
   <header class="internal-header">
-    <a href="/" class="internal-logo" title="Hub Spare Parts">
-      <img src="/static/icones/hub_logo.png" alt="Hub Spare Parts" class="logo-light">
-      <img src="/static/icones/hub_logo_branco.png" alt="Hub Spare Parts" class="logo-dark">
+    <a href="/" class="internal-logo" title="Hub Dynamics">
+      <img src="/static/icones/hub_logo.png" alt="Hub Dynamics" class="logo-light">
+      <img src="/static/icones/hub_logo_branco.png" alt="Hub Dynamics" class="logo-dark">
       <div class="internal-logo-text">
-        <span>Hub Spare Parts</span>
+        <span class="hub-area-label-text">Hub Spare Parts</span>
         <small>Drive Online</small>
       </div>
     </a>

@@ -56,13 +56,21 @@
         </script>
     
     <div class="top-header">
-        <div class="logo-title">
-            <img src="/static/icones/hub_logo.png" alt="" class="logo-light">
-            <img src="/static/icones/hub_logo_branco.png" alt="" class="logo-dark">
-            <span>Hub Dynamics</span>
+        <div class="logo-area-group">
+            <div class="logo-title">
+                <img src="/static/icones/hub_logo.png" alt="" class="logo-light">
+                <img src="/static/icones/hub_logo_branco.png" alt="" class="logo-dark">
+                <span>Hub Dynamics</span>
+            </div>
         </div>
         <div class="header-tools">
-            
+            <div class="hub-area-selector" id="hub-area-selector" style="display:none;">
+                <button class="hub-area-btn" id="hub-area-btn" type="button">
+                    <span id="hub-area-btn-label">...</span>
+                    <i class="fas fa-chevron-down hub-area-chevron" id="hub-area-chevron"></i>
+                </button>
+                <div class="hub-area-dropdown" id="hub-area-dropdown"></div>
+            </div>
             <button id="about-btn" aria-label="Sobre" title="Sobre"><i class="fas fa-question-circle"></i></button>
             <button id="settings-btn" aria-label="Configurações" title="Configurações"><i class="fas fa-cog"></i></button>
             <div class="access-container">

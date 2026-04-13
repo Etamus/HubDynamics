@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hub Spare Parts - Dashboards</title>
+    <title>Hub Dynamics - Dashboards</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
     <link rel="stylesheet" href="/static/css/hub.css">
     <link rel="stylesheet" href="/static/css/shared.css">
     <link rel="stylesheet" href="/static/css/dashboards.css">
 </head>
-<body>
+<body data-active-area="{{ active_area | default('Spare Parts') }}">
     <script>
       // (Script de carregamento de tema mantido)
       (function() {
@@ -44,16 +44,17 @@
         </script>
 
     <header class="internal-header">
-        <a href="/" class="internal-logo" title="Hub Spare Parts">
-            <img src="/static/icones/hub_logo.png" alt="Hub Spare Parts" class="logo-light">
-            <img src="/static/icones/hub_logo_branco.png" alt="Hub Spare Parts" class="logo-dark">
+        <a href="/" class="internal-logo" title="Hub Dynamics">
+            <img src="/static/icones/hub_logo.png" alt="Hub Dynamics" class="logo-light">
+            <img src="/static/icones/hub_logo_branco.png" alt="Hub Dynamics" class="logo-dark">
             <div class="internal-logo-text">
-                <span>Hub Spare Parts</span>
+                <span class="hub-area-label-text">Hub Spare Parts</span>
                 <small>Dashboards</small>
             </div>
         </a>
         <div class="internal-header-tools">
             <a href="/" id="back-btn" class="header-icon-btn back-button" title="Voltar ao Hub"><i class="fas fa-home"></i></a>
+            <button id="split-btn" class="header-icon-btn split-button hidden" title="Split Screen"><i class="fas fa-table-columns"></i></button>
             <button id="fullscreen-btn" class="header-icon-btn fullscreen-button" title="Tela Cheia"><i class="fas fa-expand"></i></button>
             <div class="access-container">
                 <button id="access-btn" class="access-button" aria-label="Acesso" title="Acesso">
@@ -137,13 +138,17 @@
         {% for system_key, system_data in dashboards_data.items() %}
         
             <div id="{{ system_key }}-options" class="dashboard-options hidden">
-                
+
+                {% if system_data.areas %}
                 <div id="{{ system_key }}-area-selection" class="dashboard-options area-selection-container">
                     {% for area_key, area_data in system_data.areas.items() %}
+                        {% if area_data.items %}
                         <button class="area-button" data-area="{{ area_key }}">{{ area_data.name }}</button>
+                        {% endif %}
                     {% endfor %}
                 </div>
-                
+                {% endif %}
+
                 {% if system_key == 'looker' %}
                 <div id="looker-pagination" class="pagination-controls">
                     <button id="looker-prev-page" class="page-button" title="Anterior">
@@ -163,6 +168,7 @@
                             <button class="view-button"
                                 data-id="{{ item.id }}"
                                 data-url="{{ item.url }}"
+                                data-hub-area="{{ item.hub_area | default('Spare Parts') }}"
                                 {% if item.width %}data-width="{{ item.width }}"{% endif %}
                                 data-preview-gif="{{ item.gif }}"
                                 data-preview-text="{{ item.text }}"
@@ -179,32 +185,6 @@
         
         {% endfor %}
         
-    </div>
-
-    <div id="login-modal-overlay" class="modal-overlay">
-        <div class="modal-content">
-            <button id="login-modal-close-btn" class="modal-close" title="Fechar">&times;</button>
-            
-            <img id="modal-logo-tableau-light" src="/static/icones/tableau_logo.png" alt="Logo Tableau" class="modal-logo logo-light hidden">
-            <img id="modal-logo-tableau-dark" src="/static/icones/tableaublack_logo.png" alt="Logo Tableau" class="modal-logo logo-dark hidden">
-            
-            <p id="modal-subtitle">Insira suas credenciais para logar.</p>
-            <div class="modal-form">
-                <div class="modal-input-group">
-                    <label for="modal-user">Usuário:</label>
-                    <input type="text" id="modal-user">
-                </div>
-                <div class="modal-input-group">
-                    <label for="modal-pass">Senha:</label>
-                    <input type="password" id="modal-pass">
-                </div>
-                <button id="modal-execute-btn" class="button btn-execute">Logar</button>
-                
-                {% if is_hub_logged_in %}
-                <button id="modal-save-conn-btn" class="button btn-save-conn">Adicionar Conexão</button>
-                {% endif %}
-            </div>
-        </div>
     </div>
 
     <div id="dashboard-view" class="dashboard-container"></div>
