@@ -4,11 +4,6 @@
     margin-top: 12px;
 }
 
-#admin-add-dashboard-btn,
-#admin-add-automation-btn {
-    margin-bottom: 12px;
-}
-
 body {
     font-family: var(--font-body);
     background-color: var(--bg-color); /* MODIFICADO */
@@ -81,9 +76,9 @@ body.theme-dark .logo-dark {
 }
 
 .header-tools a,
-.header-tools button,
+.header-tools button:not(.hub-area-btn):not(.hub-area-dropdown-item):not(.access-dropdown-item),
 .internal-header-tools a,
-.internal-header-tools button { /* MODIFICADO: Agora pode ser um botão */
+.internal-header-tools button:not(.hub-area-btn):not(.hub-area-dropdown-item):not(.access-dropdown-item) { /* MODIFICADO: Agora pode ser um botão */
     font-size: 1.8rem; /* Seu ajuste */
     color: var(--text-tertiary-color); /* MODIFICADO */
     text-decoration: none;
@@ -96,9 +91,9 @@ body.theme-dark .logo-dark {
 }
 
 .header-tools a:hover,
-.header-tools button:hover,
+.header-tools button:not(.hub-area-btn):not(.hub-area-dropdown-item):not(.access-dropdown-item):hover,
 .internal-header-tools a:hover,
-.internal-header-tools button:hover {
+.internal-header-tools button:not(.hub-area-btn):not(.hub-area-dropdown-item):not(.access-dropdown-item):hover {
     color: var(--accent-color); /* MODIFICADO */
     transform: scale(1.1);
 }
@@ -1860,7 +1855,7 @@ body.theme-dark .consult-access-value {
 .admin-modal {
     padding: 0;
     background: transparent;
-    max-width: 960px !important;
+    max-width: 1100px !important;
 }
 
 .admin-modal-grid {
@@ -1868,7 +1863,7 @@ body.theme-dark .consult-access-value {
     background: transparent;
     border-radius: 32px;
     overflow: hidden;
-    min-height: 560px;
+    min-height: 660px;
 }
 
 .admin-sidebar {
@@ -2504,7 +2499,7 @@ body.theme-dark .consult-access-value {
 
 /* Contêiner da lista */
 .admin-cms-list {
-    max-height: 42vh;
+    max-height: 44vh;
     overflow-y: auto;
     padding: 0;
     background-color: transparent;
@@ -2645,6 +2640,7 @@ body.theme-dark .consult-access-value {
 /* --- NOVOS ESTILOS: Barra de Pesquisa Admin (Layout do Hub) --- */
 .admin-search-container {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
     gap: 16px;
@@ -2691,14 +2687,13 @@ body.theme-dark .consult-access-value {
 
 /* (Req 2) Estiliza os botões "Adicionar" quando movidos */
 .admin-search-container .admin-add-btn {
-    flex-shrink: 0; /* Impede que o botão encolha */
-    margin: 0; /* Remove a margem padrão */
-    display: none; /* Oculto por padrão (JS controla a exibição) */
+    flex-shrink: 0;
+    margin: 0;
+    display: none;
     min-width: 50px;
-    max-width: 110px; 
-    margin-top: 13px;
-    justify-content: center; 
-    height: 44px;
+    max-width: 110px;
+    justify-content: center;
+    height: 37px;
     padding: 0 18px;
 }
 
@@ -2712,6 +2707,186 @@ body.theme-dark .consult-access-value {
     background-color: var(--card-bg-color);
     border-radius: 10px;
 }
+
+/* Filtro de área no painel admin */
+
+/* --- Toggle "Dashboard Geral" --- */
+.admin-toggle-group {
+    padding: 8px 0;
+}
+.admin-toggle-label {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--text-primary-color);
+}
+.admin-toggle-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent-color);
+    cursor: pointer;
+}
+.admin-toggle-hint {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.8rem;
+    color: var(--text-tertiary-color);
+}
+.admin-badge-general {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background-color: var(--accent-color);
+    color: #fff;
+    padding: 2px 7px;
+    border-radius: 10px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+/* Wrapper dos filtros admin (Área / Plataforma) */
+.admin-filter-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 0 1 auto;
+    min-width: 0;
+}
+.admin-filter-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-secondary-color);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding-left: 8px;
+}
+
+/* Select oculto (mantido para compatibilidade com JS) */
+.admin-area-filter-hidden {
+    display: none;
+}
+
+/* ── Dropdown customizado dos filtros admin ── */
+.admin-custom-select {
+    position: relative;
+}
+
+.admin-select-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 12px;
+    height: 36px;
+    border-radius: 20px;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg-color);
+    color: var(--text-primary-color);
+    font-size: 0.78rem;
+    font-family: var(--font-body);
+    cursor: pointer;
+    white-space: nowrap;
+    min-width: 90px;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.admin-select-trigger:hover {
+    border-color: var(--accent-color);
+}
+.admin-custom-select.open .admin-select-trigger {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-color) 18%, transparent);
+}
+.admin-select-arrow {
+    font-size: 0.65rem;
+    opacity: 0.6;
+    transition: transform 0.18s ease;
+    flex-shrink: 0;
+}
+.admin-custom-select.open .admin-select-arrow {
+    transform: rotate(180deg);
+}
+
+/* Painel flutuante */
+.admin-select-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 9999;
+    min-width: 100%;
+    background: var(--card-bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+    padding: 4px;
+    display: none;
+    flex-direction: column;
+    gap: 1px;
+}
+.admin-custom-select.open .admin-select-panel {
+    display: flex;
+}
+
+/* Cada opção */
+.admin-select-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary-color);
+    font-size: 0.8rem;
+    font-family: var(--font-body);
+    cursor: pointer;
+    white-space: nowrap;
+    text-align: left;
+    transition: background 0.13s ease, color 0.13s ease;
+}
+.admin-select-option:hover {
+    background: var(--hover-bg-color, rgba(var(--accent-rgb, 79, 140, 255), 0.08));
+    color: var(--text-primary-color);
+}
+.admin-select-option.is-selected {
+    color: var(--accent-color);
+    font-weight: 600;
+}
+.admin-select-check {
+    font-size: 0.65rem;
+    opacity: 0;
+    flex-shrink: 0;
+    width: 10px;
+}
+.admin-select-option.is-selected .admin-select-check {
+    opacity: 1;
+}
+
+/* Layout para abas com filtro de área (Dashboards/Automações) */
+.admin-search-container.has-area-filter {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.admin-search-container.has-area-filter .admin-filter-wrapper {
+    order: 1;
+    flex: 0 1 auto;
+    min-width: 90px;
+}
+.admin-search-container.has-area-filter .admin-add-btn {
+    order: 2;
+    align-self: flex-end;
+    margin-top: 0;
+}
+.admin-search-container.has-area-filter #admin-search-input-wrapper {
+    order: 3;
+    width: 100%;
+    max-width: 100%;
+    margin-top: 0;
+    flex-basis: 100%;
+}
+
 /* --- Estilo para o botão "Adicionar Usuário" (Req 1) --- */
 /* (Garante que ele fique oculto por padrão, como os outros) */
 #admin-add-user-btn {
@@ -2720,17 +2895,29 @@ body.theme-dark .consult-access-value {
     margin: 0;
 }
 
-/* (Req 1) Quando a aba Usuários estiver ativa, o wrapper de input encolhe */
-.admin-search-container.users-active #admin-search-input-wrapper {
-    max-width: 440px;
-    width: 100%;
-    flex-grow: 1; /* Permite crescer */
-    flex-shrink: 1; /* Permite encolher */
+/* (Req 1) Quando a aba Usuários estiver ativa */
+.admin-search-container.users-active {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
 }
-
-/* (Req 1) Quando a aba Usuários estiver ativa, o botão Adicionar aparece */
+.admin-search-container.users-active .admin-filter-wrapper {
+    order: 1;
+    flex: 0 1 auto;
+    min-width: 90px;
+}
 .admin-search-container.users-active #admin-add-user-btn {
     display: block;
+    order: 2;
+    align-self: flex-end;
+    margin-top: 0;
+}
+.admin-search-container.users-active #admin-search-input-wrapper {
+    order: 3;
+    width: 100%;
+    max-width: 100%;
+    margin-top: 0;
+    flex-basis: 100%;
 }
 /* Estilo para o status "(Bloqueado)" */
 .admin-user-info .username .user-status-locked {
@@ -2918,10 +3105,9 @@ body.theme-dark .consult-access-value {
 }
 
 /* --- ADICIONE ESTE NOVO BLOCO --- */
-/* (Estilo específico para o ícone do Tableau) */
-.connection-icon.tableau-icon {
-    /* Ajuste este valor para o tamanho desejado (ex: 18px, 30px, etc.) */
-    height: 18px; 
+/* (Estilo específico para o ícone do Salesforce) */
+.connection-icon.salesforce-icon {
+    height: 28px;
 }
 .connection-item.connection-item-padded .connection-details {
     /* Ajuste este valor (ex: 10px, 15px) como preferir */
@@ -4396,4 +4582,174 @@ body.theme-dark #cropper-footer .btn-save:hover {
   .profile-form-footer {
     padding: 15px 20px;
   }
+}
+
+/* =============================================
+   HUB AREA SELECTOR (below logo, left-aligned)
+   ============================================= */
+.logo-area-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.hub-area-selector {
+  position: relative;
+  margin-left: 0;
+}
+
+.hub-area-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(17, 25, 40, 0.15);
+  background: var(--card-bg-color);
+  color: var(--text-primary-color);
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+#hub-area-btn-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+#hub-area-btn-label i {
+  font-size: 0.82rem;
+  opacity: 0.75;
+}
+
+.hub-area-btn:hover {
+  background: rgba(0, 123, 255, 0.06);
+  color: var(--accent-color);
+  border-color: rgba(0, 123, 255, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.12);
+}
+
+body.theme-dark .hub-area-btn {
+  border-color: rgba(255, 255, 255, 0.15);
+  background: var(--card-bg-color);
+}
+
+body.theme-dark .hub-area-btn:hover {
+  background: rgba(99, 179, 237, 0.1);
+  border-color: rgba(99, 179, 237, 0.35);
+  box-shadow: 0 4px 12px rgba(99, 179, 237, 0.15);
+}
+
+.hub-area-btn.single-area {
+  cursor: default;
+  pointer-events: none;
+}
+
+.hub-area-btn.single-area .hub-area-chevron {
+  display: none;
+}
+
+.hub-area-chevron {
+  font-size: 0.65rem;
+  transition: transform 0.2s;
+  color: var(--text-tertiary-color);
+}
+
+.hub-area-btn.open .hub-area-chevron {
+  transform: rotate(180deg);
+}
+
+.hub-area-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: var(--card-bg-color);
+  border: 1px solid rgba(17, 25, 40, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  min-width: 190px;
+  overflow: hidden;
+  z-index: 200;
+}
+
+body.theme-dark .hub-area-dropdown {
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.hub-area-dropdown.open {
+  display: block;
+}
+
+.hub-area-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.85rem;
+  color: var(--text-secondary-color);
+  transition: background 0.15s;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+
+.hub-area-dropdown-item:hover {
+  background: rgba(15, 23, 42, 0.05);
+  color: var(--text-primary-color);
+}
+
+body.theme-dark .hub-area-dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.hub-area-dropdown-item.active {
+  font-weight: 700;
+  color: var(--accent-color);
+}
+
+.hub-area-dropdown-item i {
+  font-size: 0.85rem;
+  width: 16px;
+  text-align: center;
+  opacity: 0.75;
+}
+
+.hub-area-dropdown-item.active i {
+  opacity: 1;
+  color: var(--accent-color);
+}
+
+/* Admin: allowed areas checkboxes */
+.allowed-areas-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.hub-area-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: var(--color-text, #333);
+}
+
+.hub-area-checkbox-label input[type="checkbox"] {
+  accent-color: var(--color-primary, #4a6cf7);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
 }
