@@ -24,8 +24,8 @@ jobs:
         uses: atlassian/gajira-find-issue-key@v3
         with:
           string: 'GH-${{ github.event.issue.number }}'
+        continue-on-error: true
 
-      # 1. CRIAÇÃO (Seu código já funcional)
       - name: Create Issue in Jira
         if: github.event_name == 'issues' && github.event.action == 'opened'
         uses: atlassian/gajira-create@v3
@@ -35,31 +35,27 @@ jobs:
           summary: 'GH-${{ github.event.issue.number }}: ${{ github.event.issue.title }}'
           description: 'Link: ${{ github.event.issue.html_url }}\n\n${{ github.event.issue.body }}'
 
-      # 2. MOVIMENTAÇÃO: IN PROGRESS
       - name: Transition to In Progress
-        if: github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'in-progress' && steps.find.outputs.issue != ''
+        if: github.event.action == 'labeled' && github.event.label.name == 'in-progress' && steps.find.outputs.issue != ''
         uses: atlassian/gajira-transition@v3
         with:
           issue: ${{ steps.find.outputs.issue }}
           transition: 'IN PROGRESS'
 
-      # 3. MOVIMENTAÇÃO: IN VALIDATION
       - name: Transition to In Validation
-        if: github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'in-validation' && steps.find.outputs.issue != ''
+        if: github.event.action == 'labeled' && github.event.label.name == 'in-validation' && steps.find.outputs.issue != ''
         uses: atlassian/gajira-transition@v3
         with:
           issue: ${{ steps.find.outputs.issue }}
           transition: 'IN VALIDATION'
 
-      # 4. MOVIMENTAÇÃO: DONE (Ao fechar a issue ou add label)
       - name: Transition to Done
-        if: github.event_name == 'issues' && (github.event.action == 'closed' || github.event.label.name == 'done') && steps.find.outputs.issue != ''
+        if: (github.event.action == 'closed' || (github.event.action == 'labeled' && github.event.label.name == 'done')) && steps.find.outputs.issue != ''
         uses: atlassian/gajira-transition@v3
         with:
           issue: ${{ steps.find.outputs.issue }}
           transition: 'DONE'
 
-      # 5. COMENTÁRIO (Seu código já funcional)
       - name: Add Comment to Jira
         if: github.event_name == 'issue_comment' && steps.find.outputs.issue != ''
         uses: atlassian/gajira-comment@v3
