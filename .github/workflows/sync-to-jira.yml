@@ -37,26 +37,29 @@ jobs:
           summary: 'GH-${{ github.event.issue.number }}: ${{ github.event.issue.title }}'
           description: 'Link: ${{ github.event.issue.html_url }}\n\n${{ github.event.issue.body }}'
 
+# 2. MOVIMENTAÇÃO: EM ANDAMENTO
       - name: Transition to In Progress
         if: github.event.action == 'labeled' && github.event.label.name == 'in-progress' && steps.find.outputs.issue != ''
         uses: atlassian/gajira-transition@v3
         with:
           issue: ${{ steps.find.outputs.issue }}
-          transition: 'IN PROGRESS'
+          transition: 'Em andamento' # Ajustado conforme seu print
 
+      # 3. MOVIMENTAÇÃO: IN VALIDATION
       - name: Transition to In Validation
         if: github.event.action == 'labeled' && github.event.label.name == 'in-validation' && steps.find.outputs.issue != ''
         uses: atlassian/gajira-transition@v3
         with:
           issue: ${{ steps.find.outputs.issue }}
-          transition: 'IN VALIDATION'
+          transition: 'In validation' # Ajustado conforme seu print
 
+      # 4. MOVIMENTAÇÃO: DONE (Ao fechar ou label done)
       - name: Transition to Done
         if: (github.event.action == 'closed' || (github.event.action == 'labeled' && github.event.label.name == 'done')) && steps.find.outputs.issue != ''
         uses: atlassian/gajira-transition@v3
         with:
           issue: ${{ steps.find.outputs.issue }}
-          transition: 'DONE'
+          transition: 'Concluido' # Ajustado conforme seu print
 
       - name: Add Comment to Jira
         if: github.event_name == 'issue_comment' && steps.find.outputs.issue != ''
