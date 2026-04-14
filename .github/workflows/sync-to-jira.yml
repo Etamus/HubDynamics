@@ -20,15 +20,7 @@ jobs:
           JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
 
-# BUSCA: Agora ele procura o card que contém o link da issue na descrição
-      - name: Find Jira Issue
-        id: find
-        uses: atlassian/gajira-find-issue-key@v3
-        with:
-          string: '${{ github.event.issue.html_url }}'
-        continue-on-error: true
-
-      # CRIAÇÃO: Cria o card se for uma issue nova (opened)
+      # 1. CRIAÇÃO: Roda primeiro apenas se for OPENED.
       - name: Create Issue in Jira
         if: github.event_name == 'issues' && github.event.action == 'opened'
         uses: atlassian/gajira-create@v3
@@ -38,25 +30,34 @@ jobs:
           summary: 'GH-${{ github.event.issue.number }}: ${{ github.event.issue.title }}'
           description: 'Link: ${{ github.event.issue.html_url }}\n\n${{ github.event.issue.body }}'
 
-      # TRANSIÇÃO: Move o card baseado na Label (Nomes em MAIÚSCULO do seu Jira)
+      # 2. BUSCA: Só roda para comentários, edições ou labels (quando o card já deve existir).
+      - name: Find Jira Issue
+        if: github.event.action != 'opened'
+        id: find
+        uses: atlassian/gajira-find-issue-key@v3
+        with:
+          string: '${{ github.event.issue.html_url }}'
+        continue-on-error: true
+
+      # 3. TRANSIÇÃO: Move o card baseado na Label.
       - name: Transition Issue
-        if: github.event_name == 'issues' && github.event.action == 'labeled' && steps.find.outputs.issue != ''
+        if: github.event_name == 'issues' && github.event.action == 'labeled' && steps.find.outputs.issue
         uses: atlassian/gajira-transition@v3
         with:
           issue: ${{ steps.find.outputs.issue }}
           transition: ${{ (github.event.label.name == 'in-progress' && 'EM ANDAMENTO') || (github.event.label.name == 'in-validation' && 'IN VALIDATION') || (github.event.label.name == 'done' && 'CONCLUÍDO') }}
 
-      # FECHAMENTO: Move para CONCLUÍDO se a issue for fechada no GitHub
+      # 4. FECHAMENTO: Move para CONCLUÍDO.
       - name: Close Issue in Jira
-        if: github.event_name == 'issues' && github.event.action == 'closed' && steps.find.outputs.issue != ''
+        if: github.event_name == 'issues' && github.event.action == 'closed' && steps.find.outputs.issue
         uses: atlassian/gajira-transition@v3
         with:
           issue: ${{ steps.find.outputs.issue }}
           transition: 'CONCLUÍDO'
 
-      # COMENTÁRIO: Sincroniza comentários do GitHub para o Jira
+      # 5. COMENTÁRIO.
       - name: Add Comment to Jira
-        if: github.event_name == 'issue_comment' && steps.find.outputs.issue != ''
+        if: github.event_name == 'issue_comment' && steps.find.outputs.issue
         uses: atlassian/gajira-comment@v3
         with:
           issue: ${{ steps.find.outputs.issue }}
