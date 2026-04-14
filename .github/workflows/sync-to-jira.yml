@@ -20,6 +20,7 @@ jobs:
           JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
 
+      # 1. CRIAÇÃO: Sem o \n grudado no link para não sujar a busca futura
       - name: Create Issue in Jira
         if: github.event_name == 'issues' && github.event.action == 'opened'
         uses: atlassian/gajira-create@v3
@@ -27,24 +28,29 @@ jobs:
           project: 'HUBFUP' 
           issuetype: 'Task'
           summary: 'GH-${{ github.event.issue.number }}: ${{ github.event.issue.title }}'
-          description: 'Link: ${{ github.event.issue.html_url }}\n\n${{ github.event.issue.body }}'
+          description: '${{ github.event.issue.html_url }}' # Link limpo na descrição
 
-      # BUSCA MANUAL (Mais estável que a busca automática)
+      # 2. BUSCA: Agora ele busca pelo GH-Número no título (mais seguro contra caracteres invisíveis)
       - name: Find Jira Issue Key
         if: github.event.action != 'opened'
         id: find
         uses: atlassian/gajira-find-issue-key@v3
         with:
-          string: '${{ github.event.issue.html_url }}'
+          string: 'GH-${{ github.event.issue.number }}'
         continue-on-error: true
 
-      # DEBUG: Para vermos se ele achou o card
-      - name: Log Issue Key
-        run: echo "O card encontrado foi: ${{ steps.find.outputs.issue }}"
-
+      # 3. TRANSIÇÃO: Usando os nomes exatos do seu menu em MAIÚSCULO
       - name: Transition Issue
-        if: github.event.action == 'labeled' && steps.find.outputs.issue != ''
+        if: github.event_name == 'issues' && github.event.action == 'labeled' && steps.find.outputs.issue != ''
         uses: atlassian/gajira-transition@v3
         with:
           issue: ${{ steps.find.outputs.issue }}
           transition: ${{ (github.event.label.name == 'in-progress' && 'EM ANDAMENTO') || (github.event.label.name == 'in-validation' && 'IN VALIDATION') || (github.event.label.name == 'done' && 'CONCLUÍDO') }}
+
+      # 4. COMENTÁRIO
+      - name: Add Comment to Jira
+        if: github.event_name == 'issue_comment' && steps.find.outputs.issue != ''
+        uses: atlassian/gajira-comment@v3
+        with:
+          issue: ${{ steps.find.outputs.issue }}
+          comment: "${{ github.event.comment.user.login }} comentou: \n\n ${{ github.event.comment.body }}"
