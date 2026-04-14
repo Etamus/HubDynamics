@@ -20,7 +20,6 @@ jobs:
           JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
 
-      # 1. CRIAÇÃO: Roda primeiro apenas se for OPENED.
       - name: Create Issue in Jira
         if: github.event_name == 'issues' && github.event.action == 'opened'
         uses: atlassian/gajira-create@v3
@@ -30,8 +29,8 @@ jobs:
           summary: 'GH-${{ github.event.issue.number }}: ${{ github.event.issue.title }}'
           description: 'Link: ${{ github.event.issue.html_url }}\n\n${{ github.event.issue.body }}'
 
-      # 2. BUSCA: Só roda para comentários, edições ou labels (quando o card já deve existir).
-      - name: Find Jira Issue
+      # BUSCA MANUAL (Mais estável que a busca automática)
+      - name: Find Jira Issue Key
         if: github.event.action != 'opened'
         id: find
         uses: atlassian/gajira-find-issue-key@v3
@@ -39,26 +38,13 @@ jobs:
           string: '${{ github.event.issue.html_url }}'
         continue-on-error: true
 
-      # 3. TRANSIÇÃO: Move o card baseado na Label.
+      # DEBUG: Para vermos se ele achou o card
+      - name: Log Issue Key
+        run: echo "O card encontrado foi: ${{ steps.find.outputs.issue }}"
+
       - name: Transition Issue
-        if: github.event_name == 'issues' && github.event.action == 'labeled' && steps.find.outputs.issue
+        if: github.event.action == 'labeled' && steps.find.outputs.issue != ''
         uses: atlassian/gajira-transition@v3
         with:
           issue: ${{ steps.find.outputs.issue }}
           transition: ${{ (github.event.label.name == 'in-progress' && 'EM ANDAMENTO') || (github.event.label.name == 'in-validation' && 'IN VALIDATION') || (github.event.label.name == 'done' && 'CONCLUÍDO') }}
-
-      # 4. FECHAMENTO: Move para CONCLUÍDO.
-      - name: Close Issue in Jira
-        if: github.event_name == 'issues' && github.event.action == 'closed' && steps.find.outputs.issue
-        uses: atlassian/gajira-transition@v3
-        with:
-          issue: ${{ steps.find.outputs.issue }}
-          transition: 'CONCLUÍDO'
-
-      # 5. COMENTÁRIO.
-      - name: Add Comment to Jira
-        if: github.event_name == 'issue_comment' && steps.find.outputs.issue
-        uses: atlassian/gajira-comment@v3
-        with:
-          issue: ${{ steps.find.outputs.issue }}
-          comment: "${{ github.event.comment.user.login }} comentou no GitHub: \n\n ${{ github.event.comment.body }}"
