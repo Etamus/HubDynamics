@@ -2,9 +2,11 @@ name: Sync GitHub Issue to Jira
 
 on:
   issues:
-    types: [opened, edited, labeled, closed, reopened]
+    types: [opened, edited, labeled, unlabeled, closed, reopened]
   issue_comment:
     types: [created]
+  # Adicionando um gatilho extra para garantir
+  workflow_dispatch:
 
 jobs:
   sync-to-jira:
