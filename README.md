@@ -78,7 +78,6 @@ Coloque qualquer modelo `.gguf` na pasta `/modelos`. O servidor carrega automati
 | Modelo | Tamanho | Velocidade estimada (i5-1245U) |
 | --- | --- | --- |
 | `qwen2.5-3b-instruct-q4_k_m.gguf` | ~2 GB | ~8 tok/s — **recomendado** |
-| `qwen2.5-7b-instruct-q4_k_m.gguf` | ~4 GB | ~3 tok/s |
 | Llama-3.1-8B Q4 | ~5 GB | ~2 tok/s — lento para uso interativo |
 
 > Modelos maiores que 4 GB em CPU resultam em latência de 30–60s por resposta. Para uso interativo recomenda-se o Qwen 3B Q4.
