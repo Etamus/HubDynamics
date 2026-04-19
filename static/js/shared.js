@@ -1,4 +1,52 @@
 const HUB_SUPPORTED_LANGUAGES = ['pt', 'en'];
+
+// ---------------------------------------------------------------------------
+// A4: Interceptor global de fetch — adiciona X-CSRF-Token em todas as
+// requisições POST/PUT/DELETE para proteção contra CSRF.
+// ---------------------------------------------------------------------------
+(function patchFetchCSRF() {
+    const _origFetch = window.fetch;
+    window.fetch = function patchedFetch(url, options) {
+        options = options || {};
+        const method = (options.method || 'GET').toUpperCase();
+        if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+            const meta = document.querySelector('meta[name="csrf-token"]');
+            if (meta && meta.content) {
+                options.headers = Object.assign({}, options.headers, {
+                    'X-CSRF-Token': meta.content
+                });
+            }
+        }
+        return _origFetch.apply(this, [url, options]);
+    };
+})();
+
+// ---------------------------------------------------------------------------
+// A3: Sanitizador HTML simples — permite apenas tags seguras do chatbot.
+// Previne XSS na renderização de respostas do LLM.
+// ---------------------------------------------------------------------------
+function hubSanitizeHTML(html) {
+    const ALLOWED_TAGS = /^(strong|em|b|i|code|br|p|span)$/i;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    (function clean(node) {
+        Array.from(node.childNodes).forEach(child => {
+            if (child.nodeType === Node.ELEMENT_NODE) {
+                if (!ALLOWED_TAGS.test(child.tagName)) {
+                    // Substitui tag não permitida pelo seu conteúdo de texto
+                    const text = document.createTextNode(child.textContent);
+                    node.replaceChild(text, child);
+                } else {
+                    // Remove todos os atributos da tag permitida
+                    Array.from(child.attributes).forEach(attr => child.removeAttribute(attr.name));
+                    clean(child);
+                }
+            }
+        });
+    })(tmp);
+    return tmp.innerHTML;
+}
+
 const HUB_I18N_ENTRIES = {
     'app.title': { pt: 'Spare Parts', en: 'Spare Parts' },
     'header.subtitle': { pt: 'Selecione a ferramenta que deseja utilizar', en: 'Select the tool you want to use' },
@@ -228,7 +276,8 @@ const HUB_I18N_ENTRIES = {
 
     function detectInitialLanguage() {
         try {
-            const storedUser = localStorage.getItem('hubUsername') || '_default';
+            // M1: hubUsername migrado para sessionStorage
+            const storedUser = sessionStorage.getItem('hubUsername') || '_default';
             return localStorage.getItem(`hubLanguage_${storedUser}`) || localStorage.getItem('hubLanguage_default') || document.documentElement.dataset.hubLang || 'pt';
         } catch (err) {
             return 'pt';
@@ -237,7 +286,8 @@ const HUB_I18N_ENTRIES = {
 
     function saveLanguage(lang) {
         try {
-            const storedUser = localStorage.getItem('hubUsername') || '_default';
+            // M1: hubUsername migrado para sessionStorage
+            const storedUser = sessionStorage.getItem('hubUsername') || '_default';
             localStorage.setItem(`hubLanguage_${storedUser}`, lang);
             localStorage.setItem('hubLanguage_default', lang);
         } catch (err) {
@@ -559,7 +609,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const messageDiv = document.createElement('div');
         messageDiv.className = `chat-message ${type} ${extraClass}`;
         if (containsHtml) {
-            messageDiv.innerHTML = text;
+            // A3: Sanitiza HTML do LLM antes de inserir no DOM
+            messageDiv.innerHTML = hubSanitizeHTML(text);
         } else {
             messageDiv.textContent = text;
         }
@@ -729,7 +780,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const labels = document.querySelectorAll('.hub-area-label-text');
     if (!labels.length) return;
     try {
-        const username = localStorage.getItem('hubUsername');
+        // M1: hubUsername migrado para sessionStorage
+    const username = sessionStorage.getItem('hubUsername');
         if (!username) {
             labels.forEach(el => { el.textContent = 'Hub Dynamics'; });
             return;

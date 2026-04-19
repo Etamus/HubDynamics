@@ -54,8 +54,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!id || !name || !icon) return;
 
         // --- LÓGICA DE USUÁRIO (Req 1) ---
-        // Lê o usuário salvo pelo hub.js ou usa '_guest'
-        const username = localStorage.getItem('hubUsername') || '_guest';
+        // M1: hubUsername migrado para sessionStorage
+        const username = sessionStorage.getItem('hubUsername') || '_guest';
         const storageKey = `recentDashboards_${username}`;
         // --------------------------------
 
@@ -114,8 +114,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // --- INÍCIO DA MODIFICAÇÃO (Req 1: Frequência) ---
             // (2) Lógica de Frequência (para "Mais Acessados")
-            // (Usamos o nome de usuário do localStorage, que o hub.js já salvou)
-            const username = localStorage.getItem('hubUsername') || '_guest';
+            // M1: hubUsername migrado para sessionStorage
+            const username = sessionStorage.getItem('hubUsername') || '_guest';
             const countStorageKey = `dashboardAccessCounts_${username}`;
             
             let counts = JSON.parse(localStorage.getItem(countStorageKey)) || {};

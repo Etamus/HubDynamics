@@ -1,8 +1,9 @@
 import subprocess
 import os
 import sys
+import hmac
+import bcrypt
 import concurrent.futures  # timeout na inferência LLM
-# NOVAS IMPORTAÇÕES
 import json
 import string
 from flask import (
@@ -10,23 +11,36 @@ from flask import (
     session, redirect, url_for
 )
 from werkzeug.utils import secure_filename
-import time # Adicionado para evitar cache de imagem
-import secrets  # <-- ADICIONE
-import datetime # <-- ADICIONE
-from datetime import timezone, timedelta # <-- ADICIONE timezone, timedelta
+import time
+import secrets
+import datetime
+from datetime import timezone, timedelta
+from dotenv import load_dotenv
 
-import google.generativeai as genai  # mantido para compatibilidade de import mas não usado
+# Carrega variáveis de ambiente do .env (deve ser chamado antes de usar os.environ)
+load_dotenv()
+
+# Importa todas as funções de banco de dados (substitui os JSONs)
+from database import (
+    init_db, load_users, save_users,
+    load_requests, save_requests,
+    load_schedules, save_schedules,
+    load_dashboards, save_dashboards,
+    load_automations, save_automations,
+    audit,
+)
+
 from llama_cpp import Llama
 import glob
 
 # --- INICIALIZAÇÃO DO MODELO LLAMA (llama.cpp) ---
-MODELOS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'modelos')
+MODELOS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'model')
 os.makedirs(MODELOS_DIR, exist_ok=True)
 
 def _load_llama_model():
     gguf_files = glob.glob(os.path.join(MODELOS_DIR, '*.gguf'))
     if not gguf_files:
-        print('AVISO: Nenhum modelo .gguf encontrado em /modelos. O assistente estará indisponível.')
+        print('AVISO: Nenhum modelo .gguf encontrado em /model. O assistente estará indisponível.')
         return None
     model_path = gguf_files[0]
     n_cpu = os.cpu_count() or 4
@@ -79,11 +93,26 @@ def _get_context_data() -> dict:
     return _prompt_cache
 
 app = Flask(__name__)
-# NOVO: Chave secreta para gerenciar sessões de usuário do Hub
-app.secret_key = 'sua_chave_secreta_aqui_mude_isso'
-BRASILIA_TZ = timezone(timedelta(hours=-3)) # <-- ADICIONE ESTA LINHA
-LOGIN_ATTEMPT_LIMIT = 5 # <-- ADICIONE
-LOCKOUT_DURATION = 300  # (5 segundos = 300) <-- ADICIONE
+
+# C2: Chave secreta carregada do .env — nunca hardcoded
+_secret = os.environ.get('FLASK_SECRET_KEY')
+if not _secret or _secret == 'TROQUE_POR_UMA_CHAVE_ALEATORIA_FORTE':
+    raise RuntimeError(
+        'FLASK_SECRET_KEY não configurada. '
+        'Edite o arquivo .env e defina uma chave aleatória segura.'
+    )
+app.secret_key = _secret
+
+# A2: Flags de segurança dos cookies de sessão
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Strict',
+    SESSION_COOKIE_SECURE=bool(os.environ.get('SSL_CERT')),
+)
+
+BRASILIA_TZ = timezone(timedelta(hours=-3))
+LOGIN_ATTEMPT_LIMIT = 5
+LOCKOUT_DURATION = 300
 
 # --- Variáveis de Estado Globais ---
 is_sap_logged_in = False
@@ -91,87 +120,37 @@ is_bw_hana_logged_in = False
 is_salesforce_logged_in = False
 last_bw_creds = {}
 last_salesforce_creds = {}
+# C4: Timestamps de expiração das credenciais (15 min)
+BW_CREDS_TTL = 15 * 60  # segundos
+last_bw_creds_expiry: float = 0.0
+last_salesforce_creds_expiry: float = 0.0
 
 # --- Caminhos e Configurações ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DRIVE_ROOT = os.path.join(BASE_DIR, "drive") 
-USUARIOS_DB = os.path.join(BASE_DIR, "users.json")
-SCHEDULER_DB = os.path.join(BASE_DIR, "scheduler_db.json") # <-- ADICIONE ESTA LINHA
-REQUESTS_DB = os.path.join(BASE_DIR, "requests_db.json") # <-- ADICIONE ESTA LINHA
+DRIVE_ROOT = os.path.join(BASE_DIR, "drive")
 LLAMA_CONTEXT_FILE = os.path.join(BASE_DIR, "prompt.json")
 
-# NOVO: Diretório para cache de imagens
 CACHE_DIR = os.path.join(BASE_DIR, "cache")
-DASHBOARDS_DB = os.path.join(BASE_DIR, "dashboards_db.json")
-AUTOMATIONS_DB = os.path.join(BASE_DIR, "automations_db.json")
-os.makedirs(CACHE_DIR, exist_ok=True) # Garante que a pasta 'cache' exista
+os.makedirs(CACHE_DIR, exist_ok=True)
 
-SCRIPT_RUNNER_SIMPLES = os.path.join(BASE_DIR, "runner.ps1")
-SCRIPT_RUNNER_SAP_LOGIN = os.path.join(BASE_DIR, "sap_login_runner.ps1")
-SCRIPT_CLEANUP = os.path.join(BASE_DIR, "cleanup_process.ps1")
-SCRIPT_BW_HANA = os.path.join(BASE_DIR, "bw_hana_extractor.py")
-DOWNLOAD_DIR = os.path.join(BASE_DIR, "macros")
+# Scripts .ps1 agora ficam na subpasta bashes/
+BASHES_DIR = os.path.join(BASE_DIR, "bashes")
+SCRIPT_RUNNER_SIMPLES    = os.path.join(BASHES_DIR, "runner.ps1")
+SCRIPT_RUNNER_SAP_LOGIN  = os.path.join(BASHES_DIR, "sap_login_runner.ps1")
+SCRIPT_CLEANUP           = os.path.join(BASHES_DIR, "cleanup_processes.ps1")
+SCRIPT_BW_HANA           = os.path.join(BASE_DIR,   "bw_hana_extractor.py")
+DOWNLOAD_DIR             = os.path.join(BASE_DIR,   "automations")
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'} # REMOVIDO 'gif'
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# --- NOVAS FUNÇÕES: Gerenciamento de Usuários (Hub) ---
-
-def load_users():
-    """Carrega os usuários do arquivo JSON."""
-    if not os.path.exists(USUARIOS_DB):
-        return {}
-    try:
-        with open(USUARIOS_DB, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-def save_users(users_data):
-    """Salva os usuários no arquivo JSON."""
-    try:
-        with open(USUARIOS_DB, 'w', encoding='utf-8') as f:
-            json.dump(users_data, f, indent=2)
-    except Exception as e:
-        print(f"Erro ao salvar usuários: {e}")
-
-def load_schedules():
-    """Carrega todos os agendamentos do arquivo JSON."""
-    if not os.path.exists(SCHEDULER_DB):
-        return {}
-    try:
-        with open(SCHEDULER_DB, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-def save_schedules(schedules_data):
-    """Salva todos os agendamentos no arquivo JSON."""
-    try:
-        with open(SCHEDULER_DB, 'w', encoding='utf-8') as f:
-            json.dump(schedules_data, f, indent=2)
-    except Exception as e:
-        print(f"Erro ao salvar agendamentos: {e}")
-
-def load_requests():
-    """Carrega todos os pedidos de acesso do arquivo JSON."""
-    if not os.path.exists(REQUESTS_DB):
-        return {}
-    try:
-        with open(REQUESTS_DB, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-def save_requests(requests_data):
-    """Salva todos os pedidos de acesso no arquivo JSON."""
-    try:
-        with open(REQUESTS_DB, 'w', encoding='utf-8') as f:
-            json.dump(requests_data, f, indent=2)
-    except Exception as e:
-        print(f"Erro ao salvar pedidos de acesso: {e}")
+# --- HELPERS DE APLICAÇÃO ---
+# load_users / save_users / load_schedules / save_schedules /
+# load_requests / save_requests / load_dashboards / save_dashboards /
+# load_automations / save_automations / audit
+# → importados de database.py no topo do arquivo.
 
 def generate_access_code(existing_tokens=None, length=6):
     """Gera um código curto alfanumérico para acompanhar solicitações."""
@@ -187,29 +166,60 @@ def generate_initial_password(length=8):
     alphabet = string.ascii_letters + string.digits + "@#$%&*?!"
     return ''.join(secrets.choice(alphabet) for _ in range(length))
         
-def load_dashboards():
-    """Carrega todos os dashboards do arquivo JSON."""
-    if not os.path.exists(DASHBOARDS_DB):
-        return {}
-    try:
-        with open(DASHBOARDS_DB, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-def load_automations():
-    """Carrega todas as automações do arquivo JSON."""
-    if not os.path.exists(AUTOMATIONS_DB):
-        return {}
-    try:
-        with open(AUTOMATIONS_DB, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {}
 
 
-# --- NOVA FUNÇÃO: Áreas de hub disponíveis ---
+
+# --- NOVA FUNCÃO: Áreas de hub disponíveis ---
 HUB_AREAS = ['Spare Parts', 'Finished Goods']
+
+# ---------------------------------------------------------------------------
+# A4: CSRF — token na sessão, verificado em todos os POST/PUT/DELETE
+# ---------------------------------------------------------------------------
+
+@app.context_processor
+def inject_csrf_token():
+    """Injeta csrf_token em todos os templates para uso no meta tag."""
+    if '_csrf_token' not in session:
+        session['_csrf_token'] = secrets.token_urlsafe(32)
+    return {'csrf_token': session['_csrf_token']}
+
+
+@app.before_request
+def verify_csrf():
+    """Bloqueia requisições POST/PUT/DELETE sem token CSRF válido."""
+    if request.method not in ('POST', 'PUT', 'DELETE', 'PATCH'):
+        return
+    # Gera o token se ainda não existir (primeira requisição sem GET prévio)
+    session_token = session.get('_csrf_token')
+    if not session_token:
+        session['_csrf_token'] = secrets.token_urlsafe(32)
+        session_token = session['_csrf_token']
+    token = (
+        request.headers.get('X-CSRF-Token')
+        or request.form.get('_csrf_token')
+        or (request.get_json(silent=True) or {}).get('_csrf_token')
+    )
+    if not token or not hmac.compare_digest(token, session_token):
+        return jsonify({'status': 'erro', 'mensagem': 'Token CSRF inválido.'}), 403
+
+
+# A5: Headers de segurança HTTP em todas as respostas
+@app.after_request
+def set_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com; "
+        "font-src 'self' cdnjs.cloudflare.com; "
+        "img-src 'self' data:; "
+        "frame-src *;"
+    )
+    return response
+
 
 
 def filter_automations_by_area(automations, user_area):
@@ -312,12 +322,15 @@ def hub():
 
 @app.route('/automacao')
 def automacao():
-    global is_sap_logged_in, is_bw_hana_logged_in, is_salesforce_logged_in, last_bw_creds, last_salesforce_creds
+    global is_sap_logged_in, is_bw_hana_logged_in, is_salesforce_logged_in
+    global last_bw_creds, last_salesforce_creds, last_bw_creds_expiry, last_salesforce_creds_expiry
     is_sap_logged_in = False
     is_bw_hana_logged_in = False
     is_salesforce_logged_in = False
     last_bw_creds = {}
     last_salesforce_creds = {}
+    last_bw_creds_expiry = 0.0
+    last_salesforce_creds_expiry = 0.0
     
     initial_zv62n_file = find_file_by_prefix(DOWNLOAD_DIR, "ZV62N")
     automations = load_automations()
@@ -600,16 +613,22 @@ def profile_change_password():
     if not user_data:
         return jsonify({"status": "erro", "mensagem": "Usuário não encontrado."}), 404
 
-    # (Req 2) Valida a senha atual
-    if user_data['password'] != current_pass:
+    # C1/C6: Valida a senha atual com bcrypt (resistente a timing attacks)
+    try:
+        senha_correta = bcrypt.checkpw(current_pass.encode(), user_data['password'].encode())
+    except Exception:
+        senha_correta = False
+
+    if not senha_correta:
         return jsonify({"status": "erro", "mensagem": "A senha atual está incorreta."}), 403
 
-    # Define a nova senha
-    user_data['password'] = new_pass
+    # C1: Hash da nova senha antes de salvar
+    user_data['password'] = bcrypt.hashpw(new_pass.encode(), bcrypt.gensalt()).decode()
     # Reseta tentativas de login por segurança
     user_data['login_attempts'] = 0
     user_data['lockout_until'] = None
     save_users(users)
+    audit(username, 'change_password')
     
     return jsonify({"status": "sucesso", "mensagem": "Senha alterada com sucesso!"})
 
@@ -662,7 +681,13 @@ def hub_login():
             return jsonify({"status": "erro", "mensagem": f"Usuário bloqueado. Tente novamente em {remaining_seconds} segundos."}), 429
         
         # 2. Se a senha estiver errada
-        if user_data['password'] != password:
+        # C1/C6: bcrypt.checkpw é resistente a timing attacks
+        try:
+            senha_correta = bcrypt.checkpw(password.encode(), user_data['password'].encode())
+        except Exception:
+            senha_correta = False
+
+        if not senha_correta:
             attempts = user_data.get('login_attempts', 0) + 1
             user_data['login_attempts'] = attempts
             
@@ -691,6 +716,8 @@ def hub_login():
         user_data['login_attempts'] = 0
         user_data['lockout_until'] = None
         save_users(users)
+        # M2: Registra login bem-sucedido no audit log
+        audit(username, 'login', f'IP: {request.remote_addr}')
         
     elif not user_data:
          return jsonify({"status": "erro", "mensagem": "Usuário ou senha inválidos."}), 401
@@ -716,7 +743,10 @@ def hub_login():
 @app.route('/api/hub/logout', methods=['POST'])
 def hub_logout():
     """Logout do usuário principal do Hub."""
+    username = session.get('username')
     session.pop('username', None)
+    if username:
+        audit(username, 'logout')
     return jsonify({"status": "sucesso"})
 
 @app.route('/api/hub/check-session')
@@ -884,8 +914,9 @@ def hub_consult():
         if request_data.get('username') and request_data.get('generated_password'):
             username = request_data['username']
             if username not in users:
+                raw_pw = request_data['generated_password'] or ''
                 users[username] = {
-                    "password": request_data['generated_password'],
+                    "password": bcrypt.hashpw(raw_pw.encode(), bcrypt.gensalt()).decode(),
                     "role": request_data.get('role', 'Analista'),
                     "area": request_data.get('area', 'N/A'),
                     "display_name": None,
@@ -944,10 +975,10 @@ def hub_complete_registration():
          return jsonify({"status": "erro", "mensagem": "Este usuário já foi registrado. Tente fazer login."}), 400
          
     users[username] = {
-        "password": password,
-        "role": request_data['role'], # Adiciona a role
-        "area": request_data['area'], # <-- ADICIONE ESTA LINHA
-        "display_name": None, # <-- ADICIONE ESTA LINHA
+        "password": bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode(),
+        "role": request_data['role'],
+        "area": request_data['area'],
+        "display_name": None,
         "profile_image": None,
         "connections": {
             "sap": None,
@@ -1005,7 +1036,7 @@ def admin_approve():
         save_requests(requests)
 
         users[username] = {
-            "password": generated_password,
+            "password": bcrypt.hashpw(generated_password.encode(), bcrypt.gensalt()).decode(),
             "role": request_entry.get('role', 'Analista'),
             "area": request_entry.get('area', 'N/A'),
             "display_name": None,
@@ -1019,6 +1050,8 @@ def admin_approve():
             "lockout_until": None
         }
         save_users(users)
+        # M3: Audit de aprovação de acesso
+        audit(session.get('username'), 'admin_approve', f'Token: {token}, User: {username}')
 
         return jsonify({"status": "sucesso"})
     
@@ -1041,6 +1074,7 @@ def admin_reject():
         requests[token]['status'] = 'Reprovado'
         requests[token]['justification'] = justification
         save_requests(requests)
+        audit(session.get('username'), 'admin_reject', f'Token: {token}')
         return jsonify({"status": "sucesso"})
     
     return jsonify({"status": "erro", "mensagem": "Solicitação não encontrada ou já processada."}), 404
@@ -1065,7 +1099,7 @@ def admin_get_users():
             "area": data.get('area', 'N/A'),
             "allowed_areas": data.get('allowed_areas', [data.get('area', 'N/A')]),
             "role": data.get('role', 'Analista'),
-            "password": data.get('password', ''),
+            "password": "",  # Hash bcrypt nunca retornado ao cliente
             "lockout_until": data.get('lockout_until', None)
         })
         
@@ -1103,10 +1137,11 @@ def admin_update_user():
         users[username]['allowed_areas'] = [a for a in new_allowed_areas if a in HUB_AREAS]
     else:
         users[username]['allowed_areas'] = [new_area]
-    if new_password: # Só atualiza a senha se uma nova foi enviada
-        users[username]['password'] = new_password
+    if new_password:  # C1: Hash bcrypt se nova senha enviada
+        users[username]['password'] = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
     
     save_users(users)
+    audit(session.get('username'), 'admin_update_user', f'Target: {username}')
     return jsonify({"status": "sucesso", "mensagem": f"Usuário {username} atualizado."})
 
 @app.route('/api/admin/delete-user', methods=['POST'])
@@ -1187,21 +1222,31 @@ def executar_macro():
 
 @app.route('/executar-bw-hana', methods=['POST'])
 def executar_bw_hana():
-    if not is_bw_hana_logged_in: 
+    global is_bw_hana_logged_in, last_bw_creds, last_bw_creds_expiry
+
+    if not is_bw_hana_logged_in:
         return jsonify({"status": "erro", "mensagem": "Acesso negado. Por favor, faça o login no BW HANA primeiro."}), 403
-    
-    if not last_bw_creds:
-        return jsonify({"status": "erro", "mensagem": "Credenciais do BW não encontradas no servidor. Faça o login novamente."}), 400
+
+    # C4: Verifica expiração das credenciais (15 min)
+    if not last_bw_creds or time.time() > last_bw_creds_expiry:
+        is_bw_hana_logged_in = False
+        last_bw_creds = {}
+        last_bw_creds_expiry = 0.0
+        return jsonify({"status": "erro", "mensagem": "Sessão BW expirada (15 min). Faça login novamente."}), 401
 
     usuario = last_bw_creds.get('user')
-    senha = last_bw_creds.get('pass')
-    
-    comando = [sys.executable, SCRIPT_BW_HANA, usuario, senha]
-    resultado = executar_comando_externo(comando, contexto_tarefa="Extração BW HANA", timeout_seconds=600)
-    
+    senha   = last_bw_creds.get('pass')
+
+    # C5: Credenciais passadas via variável de ambiente — não expostoas em args de processo
+    env = os.environ.copy()
+    env['BW_USER'] = usuario or ''
+    env['BW_PASS'] = senha   or ''
+    comando = [sys.executable, SCRIPT_BW_HANA]
+    resultado = executar_comando_externo(comando, contexto_tarefa="Extração BW HANA", timeout_seconds=600, env=env)
+
     if resultado['status'] == 'sucesso' and "ERRO:" in resultado['mensagem'].upper():
         resultado['status'] = 'erro'
-        
+
     return jsonify(resultado)
 
 @app.route('/download/<filename>')
@@ -1214,10 +1259,10 @@ def download_file(filename):
 # --- ROTAS DE LOGIN / LOGOUT (ESTADO) ---
 
 def save_connection_if_requested(system, user, password):
-    """Salva a conexão no JSON se o usuário estiver logado no Hub."""
+    """Salva a conexão no BD se o usuário estiver logado no Hub."""
     save_conn = request.form.get('save_connection') == 'true'
     username = session.get('username')
-    
+
     if save_conn and username:
         users = load_users()
         if username in users:
@@ -1225,7 +1270,8 @@ def save_connection_if_requested(system, user, password):
                 users[username]['connections'] = {}
             users[username]['connections'][system] = {'user': user, 'pass': password}
             save_users(users)
-            print(f"Conexão {system} salva para {username}")
+            # M6: Nunca logar senha — apenas sistema e usuário
+            print(f"[INFO] Conexão {system.upper()} salva para o usuário {username}")
 
 @app.route('/login-sap', methods=['POST'])
 def login_sap():
@@ -1291,98 +1337,108 @@ def logout_sap():
 
 @app.route('/login-bw-hana', methods=['POST'])
 def login_bw_hana():
-    global is_sap_logged_in, is_bw_hana_logged_in, is_salesforce_logged_in, last_bw_creds, last_salesforce_creds
-    
+    global is_sap_logged_in, is_bw_hana_logged_in, is_salesforce_logged_in
+    global last_bw_creds, last_salesforce_creds, last_bw_creds_expiry, last_salesforce_creds_expiry
+
     executar_comando_externo([ "powershell.exe", "-ExecutionPolicy", "Bypass", "-File", SCRIPT_CLEANUP ], "Limpeza pré-login")
-    
+
     usuario = request.form['usuario']
-    senha = request.form['senha']
-    
-    last_bw_creds = {
-        'user': usuario,
-        'pass': senha
-    }
+    senha   = request.form['senha']
+
+    last_bw_creds = {'user': usuario, 'pass': senha}
+    # C4: Define expiração de 15 minutos
+    last_bw_creds_expiry = time.time() + BW_CREDS_TTL
     is_bw_hana_logged_in = True
     is_sap_logged_in = False
     is_salesforce_logged_in = False
     last_salesforce_creds = {}
-    
+    last_salesforce_creds_expiry = 0.0
+
     save_connection_if_requested('bw', usuario, senha)
-    
+
     return jsonify({"status": "sucesso", "mensagem": "Login realizado com sucesso."})
 
 @app.route('/logout-bw-hana', methods=['POST'])
 def logout_bw_hana():
-    global is_bw_hana_logged_in, last_bw_creds
-    
+    global is_bw_hana_logged_in, last_bw_creds, last_bw_creds_expiry
+
     is_bw_hana_logged_in = False
     last_bw_creds = {}
-    
+    last_bw_creds_expiry = 0.0
+
     executar_comando_externo([ "powershell.exe", "-ExecutionPolicy", "Bypass", "-File", SCRIPT_CLEANUP ], "Cleanup Pós-BW")
 
     return jsonify({"status": "sucesso", "mensagem": "Estado de login BW HANA reiniciado."})
 
 @app.route('/login-salesforce', methods=['POST'])
 def login_salesforce():
-    global is_sap_logged_in, is_bw_hana_logged_in, is_salesforce_logged_in, last_bw_creds, last_salesforce_creds
-    
+    global is_sap_logged_in, is_bw_hana_logged_in, is_salesforce_logged_in
+    global last_bw_creds, last_salesforce_creds, last_bw_creds_expiry, last_salesforce_creds_expiry
+
     executar_comando_externo([ "powershell.exe", "-ExecutionPolicy", "Bypass", "-File", SCRIPT_CLEANUP ], "Limpeza pré-login")
-    
+
     usuario = request.form['usuario']
-    senha = request.form['senha']
-    
-    last_salesforce_creds = {
-        'user': usuario,
-        'pass': senha
-    }
+    senha   = request.form['senha']
+
+    last_salesforce_creds = {'user': usuario, 'pass': senha}
+    # C4: Define expiração de 15 minutos
+    last_salesforce_creds_expiry = time.time() + BW_CREDS_TTL
     is_salesforce_logged_in = True
     is_sap_logged_in = False
     is_bw_hana_logged_in = False
     last_bw_creds = {}
-    
+    last_bw_creds_expiry = 0.0
+
     save_connection_if_requested('salesforce', usuario, senha)
-    
+
     return jsonify({"status": "sucesso", "mensagem": "Login realizado com sucesso."})
 
 @app.route('/executar-salesforce', methods=['POST'])
 def executar_salesforce():
+    global is_salesforce_logged_in, last_salesforce_creds, last_salesforce_creds_expiry
+
     if not is_salesforce_logged_in:
         return jsonify({"status": "erro", "mensagem": "Acesso negado. Por favor, faça o login no Salesforce primeiro."}), 403
-    
-    if not last_salesforce_creds:
-        return jsonify({"status": "erro", "mensagem": "Credenciais do Salesforce não encontradas no servidor. Faça o login novamente."}), 400
+
+    # C4: Verifica expiração das credenciais (15 min)
+    if not last_salesforce_creds or time.time() > last_salesforce_creds_expiry:
+        is_salesforce_logged_in = False
+        last_salesforce_creds = {}
+        last_salesforce_creds_expiry = 0.0
+        return jsonify({"status": "erro", "mensagem": "Sessão Salesforce expirada (15 min). Faça login novamente."}), 401
 
     automations = load_automations()
     nome_macro_selecionada = request.form['macro']
     config = automations.get(nome_macro_selecionada)
-    
+
     if not config or config.get("type") != "salesforce":
         return jsonify({"status": "erro", "mensagem": "Automação Salesforce não encontrada ou inválida!"}), 400
 
-    usuario = last_salesforce_creds.get('user')
-    senha = last_salesforce_creds.get('pass')
-    
     comando = [ "powershell.exe", "-ExecutionPolicy", "Bypass", "-File", SCRIPT_RUNNER_SIMPLES, "-CaminhoArquivo", config['arquivo'], "-NomeMacro", config['macro'] ]
     contexto = f"tarefa Salesforce '{nome_macro_selecionada}'"
     resultado = executar_comando_externo(comando, contexto_tarefa=contexto)
-    
+
     return jsonify(resultado)
 
 @app.route('/logout-salesforce', methods=['POST'])
 def logout_salesforce():
-    global is_salesforce_logged_in, last_salesforce_creds
-    
+    global is_salesforce_logged_in, last_salesforce_creds, last_salesforce_creds_expiry
+
     is_salesforce_logged_in = False
     last_salesforce_creds = {}
-    
+    last_salesforce_creds_expiry = 0.0
+
     executar_comando_externo([ "powershell.exe", "-ExecutionPolicy", "Bypass", "-File", SCRIPT_CLEANUP ], "Cleanup Pós-Salesforce")
 
     return jsonify({"status": "sucesso", "mensagem": "Estado de login Salesforce reiniciado."})
 
 # --- Função de Execução de Comando ---
-def executar_comando_externo(comando, contexto_tarefa="Tarefa genérica", timeout_seconds=600): # 10 min de timeout padrão
+def executar_comando_externo(comando, contexto_tarefa="Tarefa genérica", timeout_seconds=600, env=None):
     try:
-        resultado = subprocess.run(comando, capture_output=True, check=True, text=False, timeout=timeout_seconds)
+        resultado = subprocess.run(
+            comando, capture_output=True, check=True, text=False,
+            timeout=timeout_seconds, env=env
+        )
         output = resultado.stdout.decode('cp1252', errors='ignore').strip()
         
         if "ERRO:" in output.upper():
@@ -1407,8 +1463,7 @@ def executar_comando_externo(comando, contexto_tarefa="Tarefa genérica", timeou
 def _build_automation_index():
     """Retorna lista de strings com nome, tipo e caminho explícito de cada automação."""
     try:
-        with open(AUTOMATIONS_DB, 'r', encoding='utf-8') as fa:
-            data = json.load(fa)
+        data = load_automations()
         lines = []
         for name, info in data.items():
             text = (info.get('text') or '').strip()
@@ -1438,8 +1493,7 @@ def _build_automation_index():
 def _build_dashboard_index():
     """Retorna lista com nome, descrição e caminho explícito de cada dashboard."""
     try:
-        with open(DASHBOARDS_DB, 'r', encoding='utf-8') as fd:
-            data = json.load(fd)
+        data = load_dashboards()
         lines = []
         for platform, pdata in data.items():
             # Usa system_name se disponível (ex: 'Looker Studio', 'Tableau', 'Biblioteca')
@@ -1594,7 +1648,7 @@ def _is_offtopic(text: str, history: list) -> bool:
 @app.route('/api/chatbot/query', methods=['POST'])
 def chatbot_query():
     if not llama_model:
-        return jsonify({"status": "erro", "text": "Nenhum modelo .gguf encontrado na pasta /modelos. Adicione um modelo e reinicie o servidor."}), 500
+        return jsonify({"status": "erro", "text": "Nenhum modelo .gguf encontrado na pasta /model. Adicione um modelo e reinicie o servidor."}), 500
 
     history = request.json.get('history', [])
     if not history:
@@ -1766,30 +1820,30 @@ def admin_get_cms_data():
 
 @app.route('/api/admin/save-automations', methods=['POST'])
 def admin_save_automations():
-    """Salva o JSON de automações."""
+    """Salva automações no banco de dados."""
     if not is_admin():
         return jsonify({"status": "erro", "mensagem": "Acesso negado."}), 403
-    
+
     try:
         data = request.json
-        # Escreve o JSON exatamente como recebido (assume que o frontend envia o formato correto)
-        with open(AUTOMATIONS_DB, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2)
+        save_automations(data)
+        # M3: Audit de alteração de automações
+        audit(session.get('username'), 'save_automations', f'Itens: {len(data)}')
         return jsonify({"status": "sucesso", "mensagem": "Automações atualizadas."})
     except Exception as e:
         return jsonify({"status": "erro", "mensagem": f"Falha ao salvar automações: {str(e)}"}), 500
 
 @app.route('/api/admin/save-dashboards', methods=['POST'])
 def admin_save_dashboards():
-    """Salva o JSON de dashboards."""
+    """Salva dashboards no banco de dados."""
     if not is_admin():
         return jsonify({"status": "erro", "mensagem": "Acesso negado."}), 403
-    
+
     try:
         data = request.json
-        # Escreve o JSON exatamente como recebido
-        with open(DASHBOARDS_DB, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2)
+        save_dashboards(data)
+        # M3: Audit de alteração de dashboards
+        audit(session.get('username'), 'save_dashboards')
         return jsonify({"status": "sucesso", "mensagem": "Dashboards atualizados."})
     except Exception as e:
         return jsonify({"status": "erro", "mensagem": f"Falha ao salvar dashboards: {str(e)}"}), 500   
@@ -1814,9 +1868,9 @@ def admin_add_user():
     if username in users:
         return jsonify({"status": "erro", "mensagem": "Este usuário já existe."}), 400
     
-    # Cria a nova entrada de usuário
+    # C1: Hash bcrypt na criação de usuário pelo admin
     users[username] = {
-        "password": password,
+        "password": bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode(),
         "role": role,
         "area": area,
         "allowed_areas": [a for a in allowed_areas if a in HUB_AREAS] or [area],
@@ -1830,18 +1884,39 @@ def admin_add_user():
         "login_attempts": 0,
         "lockout_until": None
     }
-    
+
     save_users(users)
+    audit(session.get('username'), 'admin_add_user', f'Created: {username}')
     return jsonify({"status": "sucesso", "mensagem": f"Usuário {username} criado."})
 
 # --- Início do Servidor ---
 
 if __name__ == '__main__':
-    # Fix: Windows error 6 — click/colorama falha ao escrever o banner do Flask
-    # quando o handle de console Win32 é inválido (alguns terminais do VS Code / PowerShell).
-    # Solução: substituir show_server_banner por no-op para evitar o click.echo problemático.
     import flask.cli as _flask_cli
     _flask_cli.show_server_banner = lambda *a, **kw: None
-    print("Servidor Iniciado...")
-    print("Acesse o Hub em http://[SEU_IP]:5000")
-    app.run(host='0.0.0.0', port=5000, use_reloader=False, debug=False, threaded=True)
+
+    # Inicializa banco de dados (cria tabelas e migra JSONs legados se necessário)
+    init_db()
+
+    port = int(os.environ.get('PORT', 5000))
+
+    # A1: Suporte a SSL/HTTPS via certificado interno da empresa
+    ssl_cert = os.environ.get('SSL_CERT', '').strip()
+    ssl_key  = os.environ.get('SSL_KEY', '').strip()
+    ssl_ctx  = (ssl_cert, ssl_key) if ssl_cert and ssl_key else None
+
+    if ssl_ctx:
+        print(f"Servidor Iniciado com HTTPS na porta {port}")
+        print(f"Acesse o Hub em https://[SEU_IP]:{port}")
+    else:
+        print(f"Servidor Iniciado com HTTP na porta {port} (rede interna)")
+        print(f"Acesse o Hub em http://[SEU_IP]:{port}")
+
+    app.run(
+        host='0.0.0.0',
+        port=port,
+        use_reloader=False,
+        debug=False,
+        threaded=True,
+        ssl_context=ssl_ctx
+    )

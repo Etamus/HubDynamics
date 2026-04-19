@@ -84,7 +84,7 @@ def run_automation(username, password):
             download.save_as(temp_xls_path)
             
             print("Iniciando a conversão de XLS para CSV via PowerShell...")
-            caminho_script_conversao = os.path.join(BASE_DIR, "convert_xls_to_csv.ps1")
+            caminho_script_conversao = os.path.join(BASE_DIR, "bashes", "convert_xls_to_csv.ps1")
             
             comando_conversao = [
                 "powershell.exe", "-ExecutionPolicy", "Bypass",
@@ -115,10 +115,13 @@ def run_automation(username, password):
                 browser.close()
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("ERRO: Usuário e senha são necessários para executar o script.")
+    # C5: Credenciais lidas de variáveis de ambiente em vez de argumentos de linha de comando.
+    # Passadas pelo servidor via env= no subprocess.run — nunca visíveis em 'tasklist'.
+    user_arg = os.environ.get('BW_USER', '').strip()
+    pass_arg = os.environ.get('BW_PASS', '').strip()
+
+    if not user_arg or not pass_arg:
+        print("ERRO: BW_USER e BW_PASS devem ser definidos como variáveis de ambiente.")
         sys.exit(1)
-        
-    user_arg = sys.argv[1]
-    pass_arg = sys.argv[2]
+
     run_automation(user_arg, pass_arg)

@@ -71,13 +71,14 @@ Hub corporativo em **Flask** que centraliza automações, dashboards, arquivos e
 
 ## Hub Assistant — configuração do modelo
 
-Coloque qualquer modelo `.gguf` na pasta `/modelos`. O servidor carrega automaticamente o primeiro arquivo encontrado.
+Coloque qualquer modelo `.gguf` na pasta `/model`. O servidor carrega automaticamente o primeiro arquivo encontrado.
 
 **Modelos recomendados para CPU (i5/i7 sem GPU):**
 
 | Modelo | Tamanho | Velocidade estimada (i5-1245U) |
 | --- | --- | --- |
 | `qwen2.5-3b-instruct-q4_k_m.gguf` | ~2 GB | ~8 tok/s — **recomendado** |
+| `qwen2.5-7b-instruct-q4_k_m.gguf` | ~4 GB | ~3 tok/s |
 | Llama-3.1-8B Q4 | ~5 GB | ~2 tok/s — lento para uso interativo |
 
 > Modelos maiores que 4 GB em CPU resultam em latência de 30–60s por resposta. Para uso interativo recomenda-se o Qwen 3B Q4.
@@ -125,11 +126,11 @@ initialize.bat
 | --- | --- |
 | `main_server.py` | Servidor Flask (rotas web, APIs, autenticação, RBAC, LLM e integração com JSONs). |
 | `prompt.json` | Base de conhecimento do Hub Assistant (introdução, ferramentas e regras). |
-| `modelos/` | Pasta para modelos `.gguf` do Hub Assistant (não versionada). |
+| `model/` | Pasta para modelos `.gguf` do Hub Assistant (não versionada). |
 | `static/css/` | Camadas de estilo segmentadas (hub, automacao, dashboards, drive, shared). |
 | `static/js/automacao.js` | Lógica do painel SAP/BW, scheduler, preview, login automático e status das execuções. |
 | `static/js/dashboards.js` | Busca global, preview lateral dos dashboards, controle de iframe e ocultação de busca. |
-| `runner.ps1`, `sap_login_runner.ps1`, `cleanup_processes.ps1` | Scripts PowerShell para controlar Excel/SAP, logins e limpeza de ambiente. |
+| `bashes/runner.ps1`, `bashes/sap_login_runner.ps1`, `bashes/cleanup_processes.ps1` | Scripts PowerShell para controlar Excel/SAP, logins e limpeza de ambiente. |
 | `bw_hana_extractor.py` | Automação Playwright para BW HANA. |
 | `automations_db.json` | Catálogo de automações (nome, tipo, macro, área, texto, GIF). |
 | `dashboards_db.json` | Catálogo de dashboards (plataforma, área, itens, descrição). |

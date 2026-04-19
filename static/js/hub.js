@@ -2580,7 +2580,8 @@ fetch('/api/hub/check-session')
         currentHubOriginArea = data.area; // Área de origem (estática)
         currentHubRole = data.role;
         currentHubAllowedAreas = data.allowed_areas || [data.area];
-        localStorage.setItem('hubUsername', data.username); 
+        // M1: hubUsername em sessionStorage (não persistir entre abas/sessões)
+        sessionStorage.setItem('hubUsername', data.username); 
         
         // --- INÍCIO DA MODIFICAÇÃO (Req 1) ---
         // Armazena o nome globalmente E passa para o dropdown
@@ -2614,7 +2615,8 @@ fetch('/api/hub/check-session')
         currentHubRole = null;
         currentHubAllowedAreas = [];
         currentHubDisplayName = null; // (Limpa o nome)
-        localStorage.removeItem('hubUsername');
+        // M1: hubUsername em sessionStorage
+        sessionStorage.removeItem('hubUsername');
         updateAccessDropdown(null, data.profile_image, null, null, null);
     }
 

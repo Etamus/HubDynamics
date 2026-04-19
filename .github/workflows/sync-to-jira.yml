@@ -1,1 +1,45 @@
-## Stopped from now
+name: Sync GitHub Issue to Jira
+
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created]
+
+jobs:
+  sync-to-jira:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Login to Jira
+        uses: atlassian/gajira-login@v3
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+
+      # CRIAÇÃO: Roda sempre que uma issue é aberta
+      - name: Create Issue in Jira
+        if: github.event_name == 'issues' && github.event.action == 'opened'
+        uses: atlassian/gajira-create@v3
+        with:
+          project: 'HUBFUP' 
+          issuetype: 'Task'
+          summary: 'GH-${{ github.event.issue.number }}: ${{ github.event.issue.title }}'
+          description: 'Link: ${{ github.event.issue.html_url }}\n\n${{ github.event.issue.body }}'
+
+      # COMENTÁRIO: Tenta comentar buscando pelo título formatado
+      - name: Find Jira Issue for Comment
+        if: github.event_name == 'issue_comment'
+        id: find
+        uses: atlassian/gajira-find-issue-key@v3
+        with:
+          string: 'GH-${{ github.event.issue.number }}'
+
+      - name: Add Comment to Jira
+        if: github.event_name == 'issue_comment' && steps.find.outputs.issue != ''
+        uses: atlassian/gajira-comment@v3
+        with:
+          issue: ${{ steps.find.outputs.issue }}
+          comment: "${{ github.event.comment.user.login }} comentou: \n\n ${{ github.event.comment.body }}"

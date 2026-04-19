@@ -4,8 +4,10 @@
     <title>Hub Dynamics</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css"> <link rel="stylesheet" href="/static/css/hub.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
+    <link rel="stylesheet" href="/static/css/hub.css">
     <link rel="stylesheet" href="/static/css/shared.css">
     <style>
         .visually-hidden {
@@ -240,7 +242,9 @@
                 <div class="devlog-container">
                     <label>Histórico de Versões</label>
                     <ul>
-                        <li><strong>v1.8.0:</strong> Correção de preview na em automações e melhoria no design do agendador de tarefas</li>
+                        <li><strong>v2.0.2:</strong> Mudanças na estrutura de dados e ajustes de segurança</li>
+                        <li><strong>v1.9:</strong> Atualização para Produção</li>
+                        <li><strong>v1.8.1:</strong> Atualização para Produção</li>
                         <li><strong>v1.7.8:</strong> Finalização da atualização de design e reestruturação da Solicitação de Acesso</li>
                         <li><strong>v1.6.8:</strong> Atualização de design em todo o Hub e novas lógicas</li>
                         <li><strong>v1.5.3:</strong> Readequação do número da versão atual e atualização do layout de janelas</li>
