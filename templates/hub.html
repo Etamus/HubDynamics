@@ -7,8 +7,8 @@
     <meta name="csrf-token" content="{{ csrf_token }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
-    <link rel="stylesheet" href="/static/css/hub.css">
-    <link rel="stylesheet" href="/static/css/shared.css">
+    <link rel="stylesheet" href="/static/css/hub.css?v=font-segoe-ui-20260424">
+    <link rel="stylesheet" href="/static/css/shared.css?v=font-segoe-ui-20260424">
     <style>
         .visually-hidden {
             position: absolute;
@@ -156,28 +156,6 @@
                 <p>Acesse o portal com os dashboards do Looker Studio e Tableau.</p>
             </a>
 
-            {% if role == 'Executor' or role == 'Analista' %}
-            <a href="/drive" class="hub-card" aria-label="Drive Online. Navegue pelas pastas da rede sem necessidade de uso da VPN.">
-                <div class="card-media-area">
-                    <div class="card-preview"> <img src="/static/gifs/drive_preview.gif" alt="Preview Drive"> </div>
-                    <div class="card-content">
-                        <div class="card-icon"> <i class="fas fa-hdd" aria-hidden="true"></i> </div>
-                        <h2>Drive Online</h2>
-                    </div>
-                </div>
-                <p>Navegue pelas pastas da rede sem necessidade de uso da VPN.</p>
-            </a>
-            {% else %}
-                <div class="hub-card disabled">
-                    <div class="card-media-area">
-                        <div class="card-content">
-                            <div class="card-icon"> <i class="fas fa-hdd" aria-hidden="true"></i> </div>
-                            <h2>Drive Online</h2>
-                        </div>
-                    </div>
-                    <p>Faça login para ter acesso.</p> </div>
-            {% endif %}
-
         </div>
         
         <div class="quick-links-section" id="quick-links-section">
@@ -251,14 +229,14 @@
                         <li><strong>v1.4.8:</strong> Lançamento do novo design de janelas do Hub</li>
                         <li><strong>v1.3.3:</strong> Layout alterado por completo, melhorias de perfil e correções</li>
                         <li><strong>v1.2.8:</strong> Melhoria de layout e nova seleção de tela nas páginas</li>
-                        <li><strong>v1.2.3:</strong> Melhorias no Drive Online e alterações nos ícones das páginas</li>
+                        <li><strong>v1.2.3:</strong> Melhorias de navegação e alterações nos ícones das páginas</li>
                         <li><strong>v1.2.1:</strong> Novo perfil de usuário e correção de "alert" da janela de registro</li>
                         <li><strong>v1.1.9:</strong> Correção de icones e melhoria do modo escuro</li>
                         <li><strong>v1.1.7:</strong> Adição de novas lógicas de "@media" para atualização do modo mobile</li>
                         <li><strong>v1.1.0:</strong> Adicionado login para Tableau no Dashboards e correção da quebra de linha do Chatbot</li>
                         <li><strong>v1.0.5:</strong> Barra de pesquisa aprimorada e novo preview na página de automações</li>
                         <li><strong>v1.0.2:</strong> Atualização da lógica e prompt do Chatbot</li>
-                        <li><strong>v1.0.0:</strong> Melhoria no desbloqueio de usuário e informações do Drive Online</li>
+                        <li><strong>v1.0.0:</strong> Melhoria no desbloqueio de usuário e informações da plataforma</li>
                         <li><strong>v0.9.5:</strong> Adicionado botão de criação de usuário na tela de administração</li>
                         <li><strong>v0.9.0:</strong> Janela de administração aprimorada e correções de problemas</li>
                         <li><strong>v0.8.9:</strong> Melhoria de layout da página incial e lógica da barra de pesquisa</li>

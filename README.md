@@ -1,6 +1,6 @@
 # Hub Dynamics
 
-Hub corporativo em **Flask** que centraliza automações, dashboards, arquivos e fluxos de acesso em uma única experiência responsiva. O Hub abstrai integrações com SAP, BW HANA, macros em Excel e relatórios Looker/Tableau, oferecendo RBAC completo, perfis personalizados, scheduler persistente e um assistente de IA local (Hub Assistant).
+Hub corporativo em **Flask** que centraliza automações, dashboards e fluxos de acesso em uma única experiência responsiva. O Hub abstrai integrações com SAP, BW HANA, macros em Excel e relatórios Looker/Tableau, oferecendo RBAC completo, perfis personalizados, scheduler persistente e um assistente de IA local (Hub Assistant).
 
 ---
 
@@ -12,11 +12,11 @@ Hub corporativo em **Flask** que centraliza automações, dashboards, arquivos e
 
 | Área | O que existe hoje |
 | --- | --- |
-| **Portal & RBAC** | Landing inteligente que libera/oculta Automação, Dashboards e Drive conforme a role (Executor, Analista ou Visitante). Renderização server-side evita flicker ao carregar. |
+| **Portal & RBAC** | Landing inteligente que libera/oculta Automação e Dashboards conforme a role (Executor, Analista ou Visitante). Renderização server-side evita flicker ao carregar. |
 | **Perfis & Personalização** | Login/registro, upload e recorte de avatar via Cropper.js, preferências de idioma/tema sincronizadas e armazenamento das últimas automações/dashboards usados por usuário. |
 | **Automação SAP/BW** | Painel com preview animado, login automático via conexões salvas, execução de macros PowerShell/Excel, limpeza de processos e gatilhos para Playwright (BW HANA). |
 | **Scheduler compacto** | Modal em abas ("Tarefas", "Fila", "Histórico"), inputs com máscara + seletor nativo, fila/histórico persistentes em `scheduler_db.json`, propriedade de tarefas e paginação de botões. |
-| **Dashboards & Drive** | Busca global, preview GIF com tags, esconder/exibir busca ao abrir dashboards, controle de iframe responsivo e Drive web para navegar pelo storage da operação. |
+| **Dashboards** | Busca global, preview GIF com tags, esconder/exibir busca ao abrir dashboards e controle de iframe responsivo. |
 | **Admin & Acessos** | Fluxo de solicitação com token, consulta de status, criação de senha pós-aprovação e painel do admin para aprovar, justificar e gerir usuários. |
 | **Hub Assistant (LLM local)** | Chatbot de ajuda alimentado por modelo GGUF via `llama-cpp-python`. Roda 100% local (sem API externa), responde exclusivamente sobre o Hub, com pré-filtro de off-topic, prompt compacto otimizado para CPU e timeout de segurança por inferência. |
 
@@ -32,7 +32,7 @@ Hub corporativo em **Flask** que centraliza automações, dashboards, arquivos e
 - **Frontend:** HTML5, CSS modular (`hub.css`, `automacao.css`, etc.), JavaScript vanilla organizado por página (`hub.js`, `automacao.js`, `dashboards.js`, `shared.js`).
 - **Automação:** PowerShell para macros SAP/Excel, Playwright Python para BW HANA, scripts utilitários (limpeza de processos, conversões XLS → CSV).
 - **LLM local:** `llama-cpp-python` 0.3.18 — modelo `.gguf` carregado na inicialização com warm-up automático. System prompt dinâmico e compacto (~55–120 tokens), injeção de contexto por tópico detectado e timeout de 180s por inferência.
-- **Persistência leve:** Arquivos JSON (`users.json`, `scheduler_db.json`, `requests_db.json`, `automations_db.json`, `dashboards_db.json`) e cache local (`/cache`, `/drive`).
+- **Persistência:** SQLite em `hub_dynamics.db` e cache local em `/cache`.
 - **Assets:** Cropper.js, Font Awesome, animações próprias e componentes reutilizáveis em `static/js/shared.js`.
 
 ---
@@ -55,10 +55,10 @@ Hub corporativo em **Flask** que centraliza automações, dashboards, arquivos e
 3. Seleção de automações paginada e botão "Adicionar à Fila" centralizado.
 4. Fila/histórico persistem em `scheduler_db.json`; somente o criador remove sua tarefa.
 
-### 4. Dashboards e Drive
+### 4. Dashboards
 1. Busca global com atalhos (Ctrl + K) e preview lateral.
 2. Ao abrir dashboard, barra de busca recolhe e iframe expande (desktop/mobile responsivo).
-3. Drive emula navegador de arquivos web, permitindo download direto do servidor.
+3. Dashboards mantêm preview lateral, busca rápida e navegação responsiva entre áreas e plataformas.
 
 ### 5. Hub Assistant (LLM)
 1. Botão de chat abre janela flutuante na interface.
@@ -127,7 +127,7 @@ initialize.bat
 | `main_server.py` | Servidor Flask (rotas web, APIs, autenticação, RBAC, LLM e integração com JSONs). |
 | `prompt.json` | Base de conhecimento do Hub Assistant (introdução, ferramentas e regras). |
 | `model/` | Pasta para modelos `.gguf` do Hub Assistant (não versionada). |
-| `static/css/` | Camadas de estilo segmentadas (hub, automacao, dashboards, drive, shared). |
+| `static/css/` | Camadas de estilo segmentadas (hub, automacao, dashboards e shared). |
 | `static/js/automacao.js` | Lógica do painel SAP/BW, scheduler, preview, login automático e status das execuções. |
 | `static/js/dashboards.js` | Busca global, preview lateral dos dashboards, controle de iframe e ocultação de busca. |
 | `bashes/runner.ps1`, `bashes/sap_login_runner.ps1`, `bashes/cleanup_processes.ps1` | Scripts PowerShell para controlar Excel/SAP, logins e limpeza de ambiente. |
@@ -168,8 +168,8 @@ initialize.bat
 ## Checklist rápido pós-clone
 
 1. Configure variáveis de ambiente (se necessário) para SAP/BW.
-2. Garanta acesso às pastas `cache/` e `drive/` para leitura/escrita.
-3. Coloque um modelo `.gguf` em `/modelos` (ex: `qwen2.5-3b-instruct-q4_k_m.gguf`).
+2. Garanta acesso à pasta `cache/` para leitura/escrita.
+3. Coloque um modelo `.gguf` em `/model` (ex: `qwen2.5-3b-instruct-q4_k_m.gguf`).
 4. Execute `python main_server.py` e valide:
    - Login/registro/troca de tema.
    - Painel de automação (logins, previews e status box).

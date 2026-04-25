@@ -2,6 +2,7 @@
 body { 
     display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
     min-height: 100vh; padding: 40px 20px 40px 20px; box-sizing: border-box; overflow-x: hidden;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
     /* ALTERADO: Usando variáveis */
     background-color: var(--bg-color);
     transition: background-color 0.3s ease, color 0.3s ease;
@@ -65,7 +66,7 @@ body.dashboard-view-active .dashboard-container {
     gap: 10px;
     background: var(--accent-color);
     color: #fff;
-    font-family: 'Poppins', sans-serif;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
     font-size: 0.9rem;
     font-weight: 600;
     padding: 10px 20px;

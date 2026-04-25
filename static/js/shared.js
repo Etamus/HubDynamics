@@ -59,15 +59,12 @@ const HUB_I18N_ENTRIES = {
     'button.logout': { pt: 'Deslogar', en: 'Sign out' },
     'aria.automations': { pt: 'Automações. Execute robôs para tarefas de SAP, BW e extração de relatórios.', en: 'Automations. Run bots for SAP, BW, and report extraction tasks.' },
     'aria.dashboards': { pt: 'Dashboards. Acesse o portal com os dashboards do Looker Studio e Tableau.', en: 'Dashboards. Access the portal with Looker Studio and Tableau dashboards.' },
-    'aria.drive': { pt: 'Drive Online. Navegue pelas pastas da rede sem necessidade de uso da VPN.', en: 'Drive Online. Browse the network folders without needing the VPN.' },
     'card.automation.title': { pt: 'Automações', en: 'Automations' },
     'card.automation.description': { pt: 'Execute robôs para tarefas de SAP, BW e extração de relatórios.', en: 'Run bots for SAP, BW, and report extraction tasks.' },
     'card.requestAccess': { pt: 'Solicite para ter acesso.', en: 'Request access.' },
     'card.loginAccess': { pt: 'Faça login para ter acesso.', en: 'Log in to gain access.' },
     'card.dashboards.title': { pt: 'Dashboards', en: 'Dashboards' },
     'card.dashboards.description': { pt: 'Acesse o portal com os dashboards do Looker Studio e Tableau.', en: 'Access the portal with Looker Studio and Tableau dashboards.' },
-    'card.drive.title': { pt: 'Drive Online', en: 'Drive Online' },
-    'card.drive.description': { pt: 'Navegue pelas pastas da rede sem necessidade de uso da VPN.', en: 'Browse the network folders without needing the VPN.' },
     'quickLinks.title': { pt: 'Acesso Rápido', en: 'Quick Access' },
     'modal.settings.title': { pt: 'Configurações', en: 'Settings' },
     'settings.menuTitle': { pt: 'Menu Principal', en: 'Main Menu' },
@@ -136,7 +133,6 @@ const HUB_I18N_ENTRIES = {
     'profile.avatar.alt': { pt: 'Foto de Perfil', en: 'Profile Photo' },
     'alt.preview.automations': { pt: 'Preview Automações', en: 'Automations Preview' },
     'alt.preview.dashboards': { pt: 'Preview Dashboards', en: 'Dashboards Preview' },
-    'alt.preview.drive': { pt: 'Preview Drive', en: 'Drive Preview' },
     'modal.editName.title': { pt: 'Alterar Nome', en: 'Change Name' },
     'modal.register.title': { pt: 'Solicitar Acesso', en: 'Request Access' },
     'tabs.register.form': { pt: 'Preenchimento', en: 'Application' },
@@ -166,7 +162,6 @@ const HUB_I18N_ENTRIES = {
     'chatbot.connectionError': { pt: 'Não foi possível conectar ao assistente. Verifique sua conexão.', en: 'Could not connect to the assistant. Please check your connection.' },
     'profile.permissions.toggle': { pt: 'Permitir acesso a dados de terceiros.', en: 'Allow access to third-party data.' }
     ,'nav.restrictedExecutor': { pt: 'Acesso restrito a Executores', en: 'Access restricted to Executors' }
-    ,'nav.loginRequiredDrive': { pt: 'Faça login para acessar o Drive', en: 'Log in to access Drive' }
     ,'button.scheduler': { pt: 'Agendador', en: 'Scheduler' }
     ,'button.backToHub': { pt: 'Voltar ao Hub', en: 'Back to Hub' }
     ,'search.automation.placeholder': { pt: 'Buscar automação...', en: 'Search automation...' }
@@ -184,23 +179,17 @@ const HUB_I18N_ENTRIES = {
     ,'pagination.prev': { pt: 'Anterior', en: 'Previous' }
     ,'pagination.next': { pt: 'Próxima', en: 'Next' }
     ,'pagination.pageInfo': { pt: 'Página {current} de {total}', en: 'Page {current} of {total}' }
-    ,'subtitle.drive': { pt: 'Navegue pelas pastas da rede', en: 'Browse the network folders' }
-    ,'label.path': { pt: 'Caminho:', en: 'Path:' }
-    ,'table.header.name': { pt: 'Nome', en: 'Name' }
-    ,'table.header.modified': { pt: 'Modificado em', en: 'Modified on' }
-    ,'table.header.size': { pt: 'Tamanho', en: 'Size' }
-    ,'search.drive.placeholder': { pt: 'Buscar nesta pasta...', en: 'Search this folder...' }
     ,'about.devlog.v44': { pt: 'Lançamento do novo design de janelas do Hub', en: 'Launch of the new Hub window design' }
     ,'about.devlog.v42': { pt: 'Layout alterado por completo, melhorias de perfil e correções', en: 'Layout completely revamped with profile improvements and fixes' }
     ,'about.devlog.v409': { pt: 'Melhoria de layout e nova seleção de tela nas páginas', en: 'Layout improvements and new screen selection across the pages' }
-    ,'about.devlog.v408': { pt: 'Melhorias no Drive Online e alterações nos ícones das páginas', en: 'Drive Online improvements and updated icons across pages' }
+    ,'about.devlog.v408': { pt: 'Melhorias de navegação e alterações nos ícones das páginas', en: 'Navigation improvements and updated icons across pages' }
     ,'about.devlog.v406': { pt: 'Novo perfil de usuário e correção de "alert" da janela de registro', en: 'New user profile and fix for the registration window alert' }
     ,'about.devlog.v403': { pt: 'Correção de icones e melhoria do modo escuro', en: 'Icon fixes and dark mode improvements' }
     ,'about.devlog.v402': { pt: 'Adição de novas lógicas de "@media" para atualização do modo mobile', en: 'Added new @media logic to refresh the mobile mode' }
     ,'about.devlog.v309': { pt: 'Adicionado login para Tableau no Dashboards e correção da quebra de linha do Chatbot', en: 'Added Tableau login inside Dashboards and fixed the chatbot line break' }
     ,'about.devlog.v307': { pt: 'Barra de pesquisa aprimorada e novo preview na página de automações', en: 'Improved search bar and new preview on the automations page' }
     ,'about.devlog.v304': { pt: 'Atualização da lógica e prompt do Chatbot', en: 'Chatbot logic and prompt update' }
-    ,'about.devlog.v303': { pt: 'Melhoria no desbloqueio de usuário e informações do Drive Online', en: 'Improvements to user unlocking and Drive Online information' }
+    ,'about.devlog.v303': { pt: 'Melhoria no desbloqueio de usuário e informações da plataforma', en: 'Improvements to user unlocking and platform information' }
     ,'about.devlog.v301': { pt: 'Adicionado botão de criação de usuário na tela de administração', en: 'Added user creation button on the administration screen' }
     ,'about.devlog.v30': { pt: 'Janela de administração aprimorada e correções de problemas', en: 'Enhanced admin window and bug fixes' }
     ,'about.devlog.v292': { pt: 'Melhoria de layout da página incial e lógica da barra de pesquisa', en: 'Homepage layout improvements and search bar logic updates' }

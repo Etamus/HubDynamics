@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Poppins:wght@600&display=swap');
-
 .admin-add-btn + .admin-cms-list {
     margin-top: 12px;
 }
@@ -836,7 +834,7 @@ body.theme-dark .consult-access-label {
 }
 
 .consult-access-value {
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-family: var(--font-body);
     font-size: 0.95rem;
     color: var(--text-primary-color);
 }
@@ -2490,7 +2488,7 @@ body.theme-dark .consult-access-value {
     border-radius: 6px;
     box-sizing: border-box;
     font-size: 0.85rem; /* Fonte pequena para código */
-    font-family: 'Courier New', Courier, monospace;
+    font-family: var(--font-body);
     resize: vertical;
     padding: 10px;
     margin-top: 10px;
@@ -4604,11 +4602,12 @@ body.theme-dark #cropper-footer .btn-save:hover {
   align-items: center;
   gap: 8px;
   padding: 7px 18px;
+    margin-top: 3px;
   border-radius: 999px;
   border: 1px solid rgba(17, 25, 40, 0.15);
   background: var(--card-bg-color);
   color: var(--text-primary-color);
-  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   font-size: 0.92rem;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -4694,7 +4693,7 @@ body.theme-dark .hub-area-dropdown {
   gap: 8px;
   padding: 10px 16px;
   cursor: pointer;
-  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   font-size: 0.85rem;
   color: var(--text-secondary-color);
   transition: background 0.15s;

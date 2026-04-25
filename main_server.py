@@ -127,7 +127,6 @@ last_salesforce_creds_expiry: float = 0.0
 
 # --- Caminhos e Configurações ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DRIVE_ROOT = os.path.join(BASE_DIR, "drive")
 LLAMA_CONTEXT_FILE = os.path.join(BASE_DIR, "prompt.json")
 
 CACHE_DIR = os.path.join(BASE_DIR, "cache")
@@ -417,93 +416,6 @@ def dashboards():
         profile_image=profile_data['profile_image'],
         profile_username=profile_data['username']
     )
-
-@app.route('/drive')
-def drive():
-    # --- INÍCIO DA MODIFICAÇÃO ---
-    profile_data = get_user_profile_data()
-    username = session.get('username')
-    users = load_users()
-    user_area = session.get('active_area') or (users.get(username, {}).get('area', 'Spare Parts') if username else 'Spare Parts')
-    # --- FIM DA MODIFICAÇÃO ---
-    
-    return render_template(
-        'drive.html', 
-        is_hub_logged_in=session.get('username'),
-        active_area=user_area,
-        role=profile_data['role'],
-        profile_image=profile_data['profile_image'],
-        profile_username=profile_data['username']
-    ) # <-- ADICIONADO
-
-
-# --- ROTAS DE API (DRIVE) ---
-@app.route('/api/browse')
-def api_browse():
-    relative_path = request.args.get('path', '')
-    safe_relative_path = os.path.normpath(relative_path).lstrip('.\\/')
-    current_path = os.path.join(DRIVE_ROOT, safe_relative_path)
-    
-    if not os.path.abspath(current_path).startswith(os.path.abspath(DRIVE_ROOT)):
-        return jsonify({"error": "Acesso negado."}), 403
-        
-    try:
-        items = os.listdir(current_path)
-        content = []
-        for item in items:
-            item_path = os.path.join(current_path, item)
-            is_dir = os.path.isdir(item_path)
-            
-            # --- INÍCIO DA MODIFICAÇÃO (Req 1) ---
-            try:
-                # Pega as estatísticas do arquivo/pasta
-                stats = os.stat(item_path)
-                mod_time_stamp = stats.st_mtime
-                # Converte o timestamp para formato ISO (JS consegue ler)
-                mod_date = datetime.datetime.fromtimestamp(mod_time_stamp).isoformat()
-                
-                # Pega o tamanho (se não for diretório)
-                size = stats.st_size if not is_dir else 0
-                
-            except (FileNotFoundError, PermissionError):
-                # Caso o arquivo seja bloqueado ou excluído durante a leitura
-                mod_date = None
-                size = 0
-            # --- FIM DA MODIFICAÇÃO ---
-
-            content.append({
-                "name": item, 
-                "is_dir": is_dir,
-                "mod_date": mod_date, # Adicionado
-                "size": size        # Adicionado
-            })
-    
-        content.sort(key=lambda x: (not x['is_dir'], x['name'].lower()))
-        
-        return jsonify({
-            "path": safe_relative_path,
-            "content": content
-        })
-    except FileNotFoundError:
-        return jsonify({"error": "Pasta não encontrada."}), 404
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/download')
-def api_download():
-    relative_path = request.args.get('path', '')
-    safe_relative_path = os.path.normpath(relative_path).lstrip('.\\/')
-    full_path = os.path.join(DRIVE_ROOT, safe_relative_path)
-    
-    if not os.path.abspath(full_path).startswith(os.path.abspath(DRIVE_ROOT)) or os.path.isdir(full_path):
-        return "Acesso negado.", 403
-        
-    try:
-        directory = os.path.dirname(full_path)
-        filename = os.path.basename(full_path)
-        return send_from_directory(directory, filename, as_attachment=True)
-    except FileNotFoundError:
-        return "Arquivo não encontrado.", 404
 
 # --- NOVAS ROTAS DE API (PERFIL E CACHE) ---
 
@@ -1556,7 +1468,7 @@ _KW_AODOCS = {
     'inspecao', 'sucata', 'ordem inversa', 'whirlpool', 'sap ecc'
 }
 _KW_HUB = {
-    'hub', 'ferramenta', 'acesso rápido', 'drive', 'perfil', 'login', 'senha',
+    'hub', 'ferramenta', 'acesso rápido', 'perfil', 'login', 'senha',
     'agendador', 'conexão', 'conexao', 'analista', 'executor', 'registrar',
     'token', 'cargo', 'função', 'funcao', 'bug', 'erro', 'feedback', 'sugestão'
 }

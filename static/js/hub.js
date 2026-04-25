@@ -1121,12 +1121,10 @@ function uploadCroppedImage(formData) {
         accessTagsHtml = `
             <span class="profile-tag">Automações</span>
             <span class="profile-tag">Dashboards</span>
-            <span class="profile-tag">Drive</span>
         `;
     } else if (role === 'Analista') {
         accessTagsHtml = `
             <span class="profile-tag">Dashboards</span>
-            <span class="profile-tag">Drive</span>
         `;
     }
 
